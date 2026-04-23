@@ -28,7 +28,7 @@ from sanic.response import HTTPResponse, json as sanic_json
 from sqlalchemy import asc, select
 
 from src.database import get_session
-from src.models import Group, GroupMember, GroupMemberRole
+from src.models import Group, GroupMember, GroupMemberRole, User
 from src.services.security import protected
 
 logger = structlog.get_logger(__name__)
@@ -54,6 +54,30 @@ class CreateGroupRequest(BaseModel):
             raise ValueError("Grup adı boş olamaz.")
         if len(v) > 200:
             raise ValueError("Grup adı en fazla 200 karakter olabilir.")
+        return v
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip() or None
+        return v
+
+
+class UpdateGroupRequest(BaseModel):
+    """Grup profilini düzenleme isteği (partial update)."""
+    name: str | None = None
+    content: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip()
+            if not v:
+                raise ValueError("Grup adı boş olamaz.")
+            if len(v) > 200:
+                raise ValueError("Grup adı en fazla 200 karakter olabilir.")
         return v
 
     @field_validator("content")
@@ -523,4 +547,199 @@ async def leave_group(request: Request, group_id: int) -> HTTPResponse:
                 **{k: v for k, v in response_extra.items() if k != "message_detail"},
             },
             status=200,
+        )
+
+
+# =============================================================================
+# ENDPOINT 7: PUT /api/groups/<group_id> — Grup Profilini Düzenle
+# =============================================================================
+
+@groups_bp.put("/<group_id:int>")
+@protected
+async def update_group(request: Request, group_id: int) -> HTTPResponse:
+    """
+    Grup profilini (isim ve açıklama) düzenler.
+    Yalnızca o grubun onaylı GROUP_LEADER'ı yapabilir.
+    """
+    requester_id: int = int(request.ctx.user["sub"])
+    body = request.json or {}
+
+    if not body:
+        raise BadRequest("Güncellenecek alanlar (JSON formatında) gereklidir.")
+
+    try:
+        data = UpdateGroupRequest.model_validate(body)
+    except ValidationError as exc:
+        errors = [{"field": e["loc"][0] if e["loc"] else "unknown", "message": e["msg"]} for e in exc.errors()]
+        raise BadRequest(f"Validasyon hatası: {errors}")
+
+    async with get_session() as session:
+        group = await _get_approved_group(session, group_id)
+        await _get_leader_membership(session, group_id, requester_id)
+
+        updated_fields = {}
+
+        if data.name is not None:
+            group.name = data.name
+            updated_fields["name"] = data.name
+
+        if data.content is not None:
+            group.content = data.content
+            updated_fields["content"] = data.content
+
+        if not updated_fields:
+            return sanic_json({"message": "Değişiklik yapılmadı."}, status=200)
+
+        logger.info(
+            "group.updated",
+            group_id=group_id,
+            leader_id=requester_id,
+            updated_fields=list(updated_fields.keys())
+        )
+
+        return sanic_json(
+            {
+                "message": "Grup profili başarıyla güncellendi.",
+                "group": _build_group_response(group)
+            },
+            status=200
+        )
+
+
+# =============================================================================
+# ENDPOINT 8: DELETE /api/groups/<group_id>/members/<target_user_id> — Üye Atma
+# =============================================================================
+
+@groups_bp.delete("/<group_id:int>/members/<target_user_id:int>")
+@protected
+async def kick_member(request: Request, group_id: int, target_user_id: int) -> HTTPResponse:
+    """
+    Gruptan onaylı veya onaysız mevcut bir üyeyi atar (Kick).
+    Sadece grubun onaylı GROUP_LEADER'ı yapabilir.
+    Kendini atamaz. Üyelik kalıcı silinir.
+    """
+    requester_id: int = int(request.ctx.user["sub"])
+
+    if requester_id == target_user_id:
+        raise BadRequest("Kendinizi atamazsınız, gruptan ayrılmak için leave rotasını kullanın.")
+
+    async with get_session() as session:
+        await _get_approved_group(session, group_id)
+        await _get_leader_membership(session, group_id, requester_id)
+
+        target_membership = await _get_membership(session, group_id, target_user_id)
+        if not target_membership:
+            raise NotFound("Hedef kullanıcı grubun üyesi değil.")
+
+        await session.delete(target_membership)
+
+        logger.info(
+            "group.member_kicked",
+            group_id=group_id,
+            kicked_user=target_user_id,
+            by_leader=requester_id
+        )
+
+        return sanic_json({"message": f"Kullanıcı (id={target_user_id}) gruptan atıldı."}, status=200)
+
+
+# =============================================================================
+# ENDPOINT 9: DELETE /api/groups/<group_id>/requests/<target_user_id> — İstek Reddet
+# =============================================================================
+
+@groups_bp.delete("/<group_id:int>/requests/<target_user_id:int>")
+@protected
+async def reject_request(request: Request, group_id: int, target_user_id: int) -> HTTPResponse:
+    """
+    Bekleyen katılma isteğini reddeder.
+    Sadece grubun onaylı GROUP_LEADER'ı yapabilir.
+    """
+    requester_id: int = int(request.ctx.user["sub"])
+
+    async with get_session() as session:
+        await _get_approved_group(session, group_id)
+        await _get_leader_membership(session, group_id, requester_id)
+
+        stmt = select(GroupMember).where(
+            GroupMember.group_id == group_id,
+            GroupMember.user_id == target_user_id,
+            GroupMember.is_approved.is_(False)
+        )
+        target_membership = await session.scalar(stmt)
+
+        if not target_membership:
+            raise NotFound("Hedef kullanıcı için bekleyen bir istek bulunamadı.")
+
+        await session.delete(target_membership)
+
+        logger.info(
+            "group.request_rejected",
+            group_id=group_id,
+            rejected_user=target_user_id,
+            by_leader=requester_id
+        )
+
+        return sanic_json({"message": "Katılma isteği reddedildi."}, status=200)
+
+
+# =============================================================================
+# ENDPOINT 10: POST /api/groups/<group_id>/invite/<target_user_id> — Kullanıcı Davet Et
+# =============================================================================
+
+@groups_bp.post("/<group_id:int>/invite/<target_user_id:int>")
+@protected
+async def invite_user(request: Request, group_id: int, target_user_id: int) -> HTTPResponse:
+    """
+    Gruba kullanıcı davet etme.
+    Herhangi bir onaylı üye davet gönderebilir.
+    Hedef kullanıcı GroupMember tablosuna is_approved=False (davet beklemede) olarak eklenir.
+    """
+    requester_id: int = int(request.ctx.user["sub"])
+
+    if requester_id == target_user_id:
+        raise BadRequest("Kendinizi davet edemezsiniz.")
+
+    async with get_session() as session:
+        await _get_approved_group(session, group_id)
+        
+        # İstek atan onaylı üye mi?
+        requester_membership = await _get_membership(session, group_id, requester_id)
+        if not requester_membership or not requester_membership.is_approved:
+            raise Forbidden("Davet gönderebilmek için grubun onaylı bir üyesi olmalısınız.")
+
+        # Hedef kullanıcı aktif ve var mı?
+        stmt_user = select(User).where(User.id == target_user_id, User.is_active.is_(True), User.deleted_at.is_(None))
+        target_user = await session.scalar(stmt_user)
+        if not target_user:
+            raise NotFound("Davet edilecek aktif kullanıcı bulunamadı.")
+
+        # Hedef kullanıcı zaten üye veya beklemede mi?
+        target_membership = await _get_membership(session, group_id, target_user_id)
+        if target_membership:
+            if target_membership.is_approved:
+                raise BadRequest("Bu kullanıcı zaten grubun onaylı üyesi.")
+            else:
+                raise BadRequest("Bu kullanıcı için zaten bekleyen bir üyelik/istek/davet var.")
+
+        new_membership = GroupMember(
+            user_id=target_user_id,
+            group_id=group_id,
+            role=GroupMemberRole.USER,
+            is_approved=False
+        )
+        session.add(new_membership)
+
+        logger.info(
+            "group.user_invited",
+            group_id=group_id,
+            invited_user=target_user_id,
+            by_user=requester_id
+        )
+
+        return sanic_json(
+            {
+                "message": "Kullanıcı başarıyla gruba davet edildi (Onay bekleniyor).",
+                "membership": _build_member_response(new_membership)
+            },
+            status=201
         )

@@ -17,6 +17,7 @@ from uuid import uuid4
 
 import aiofiles
 import structlog
+from pydantic import BaseModel, ValidationError, field_validator
 from sanic import Blueprint, Request
 from sanic.exceptions import BadRequest, Forbidden, NotFound
 from sanic.response import HTTPResponse, json as sanic_json
@@ -47,6 +48,41 @@ MAGIC_SIGNATURES = [
     (b"GIF89a",             "image/gif"),
     (b"RIFF",               "image/webp"),
 ]
+
+
+# =============================================================================
+# Pydantic Şemaları
+# =============================================================================
+
+class UpdateExpenseRequest(BaseModel):
+    """Kendi harcamasını güncelleme isteği (partial update)."""
+    amount: float | None = None
+    content: str | None = None
+    date: str | None = None
+
+    @field_validator("amount")
+    @classmethod
+    def validate_amount(cls, v: float | None) -> float | None:
+        if v is not None and v <= 0:
+            raise ValueError("Tutar pozitif olmalıdır.")
+        return v
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip() or None
+        return v
+
+    @field_validator("date")
+    @classmethod
+    def validate_date(cls, v: str | None) -> str | None:
+        if v is not None:
+            try:
+                date.fromisoformat(v)
+            except ValueError:
+                raise ValueError("Tarih YYYY-MM-DD formatında olmalıdır.")
+        return v
 
 
 # =============================================================================
@@ -332,3 +368,71 @@ async def delete_expense(request: Request, group_id: int, expense_id: int) -> HT
             "message":    "Harcama silindi.",
             "expense_id": expense_id,
         }, status=200)
+
+
+# =============================================================================
+# ENDPOINT 5: PUT /api/expenses/<group_id>/<expense_id> — Harcama Düzenle
+# =============================================================================
+
+@expenses_bp.put("/<group_id:int>/<expense_id:int>")
+@protected
+async def update_expense(request: Request, group_id: int, expense_id: int) -> HTTPResponse:
+    """
+    Kullanıcının kendi eklediği harcamayı güncellemesi.
+    Fatura fotoğrafı güncellenmez; yalnızca miktar, içerik ve tarih güncellenebilir.
+    """
+    user_id: int = int(request.ctx.user["sub"])
+    body = request.json or {}
+
+    if not body:
+        raise BadRequest("Güncellenecek alanlar (JSON formatında) gereklidir.")
+
+    try:
+        data = UpdateExpenseRequest.model_validate(body)
+    except ValidationError as exc:
+        errors = [{"field": e["loc"][0] if e["loc"] else "unknown", "message": e["msg"]} for e in exc.errors()]
+        raise BadRequest(f"Validasyon hatası: {errors}")
+
+    async with get_session() as session:
+        await _get_active_group(session, group_id)
+        await _require_approved_member(session, group_id, user_id)
+
+        stmt = select(Expense).where(
+            Expense.id == expense_id,
+            Expense.group_id == group_id,
+            Expense.is_deleted.is_(False),
+        )
+        expense = await session.scalar(stmt)
+
+        if not expense:
+            raise NotFound("Harcama bulunamadı veya silinmiş.")
+
+        if expense.added_by != user_id:
+            raise Forbidden("Yalnızca kendi eklediğiniz harcamayı güncelleyebilirsiniz.")
+
+        updated_fields = {}
+
+        if data.amount is not None:
+            expense.amount = data.amount
+            updated_fields["amount"] = data.amount
+        
+        if data.content is not None:
+            expense.content = data.content
+            updated_fields["content"] = data.content
+            
+        if data.date is not None:
+            expense.date = date.fromisoformat(data.date)
+            updated_fields["date"] = data.date
+
+        if not updated_fields:
+            return sanic_json({"message": "Değişiklik yapılmadı."}, status=200)
+
+        logger.info("expense.updated", expense_id=expense_id, user_id=user_id, updated_fields=list(updated_fields.keys()))
+
+        return sanic_json(
+            {
+                "message": "Harcama başarıyla güncellendi.",
+                "expense": _build_expense(expense)
+            }, 
+            status=200
+        )
