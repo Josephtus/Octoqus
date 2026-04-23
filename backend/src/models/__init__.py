@@ -5,7 +5,7 @@ Model paketinin public API'si.
 Tüm modelleri tek noktadan import etmeyi sağlar.
 
 Kullanım:
-    from src.models import User, Group, Expense, AuditLog
+    from src.models import User, Group, Expense, AuditLog, GroupBan
 """
 
 from src.models.models import (
@@ -20,6 +20,7 @@ from src.models.models import (
     ReportStatus,
     User,
     follower_table,
+    GroupBan,
 )
 
 __all__ = [

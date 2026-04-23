@@ -27,6 +27,7 @@ from sanic import Blueprint, Request
 from sanic.exceptions import BadRequest, NotFound
 from sanic.response import HTTPResponse, json as sanic_json
 from sqlalchemy import select, case
+from sqlalchemy.orm import selectinload
 
 from src.database import get_session
 from src.models import (
@@ -129,7 +130,7 @@ async def _create_audit_log(
 
 
 def _build_report_response(report: Report) -> dict:
-    return {
+    resp = {
         "id": report.id,
         "reporter_id": report.reporter_id,
         "reported_message_id": report.reported_message_id,
@@ -138,6 +139,41 @@ def _build_report_response(report: Report) -> dict:
         "status": report.status.value,
         "created_at": report.created_at.isoformat() if report.created_at else None,
     }
+    
+    # Eager load edilmişse ekle
+    try:
+        if report.reported_message:
+            msg = report.reported_message
+            resp["reported_message"] = {
+                "id": msg.id,
+                "content": msg.content,
+                "is_deleted": msg.is_deleted,
+            }
+            try:
+                if msg.sender:
+                    resp["reported_message"]["sender"] = {
+                        "id": msg.sender.id,
+                        "name": msg.sender.name,
+                        "surname": msg.sender.surname
+                    }
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    try:
+        if report.reported_user:
+            usr = report.reported_user
+            resp["reported_user"] = {
+                "id": usr.id,
+                "name": usr.name,
+                "surname": usr.surname,
+                "mail": usr.mail
+            }
+    except Exception:
+        pass
+
+    return resp
 
 
 def _build_audit_log_response(log: AuditLog) -> dict:
@@ -369,6 +405,10 @@ async def list_reports(request: Request) -> HTTPResponse:
         # PENDING olanları öncelikli getir, ardından creation date desc
         stmt = (
             select(Report)
+            .options(
+                selectinload(Report.reported_message).selectinload(Message.sender),
+                selectinload(Report.reported_user)
+            )
             .order_by(
                 case(
                     (Report.status == ReportStatus.PENDING, 0),
@@ -862,5 +902,109 @@ async def admin_delete_group(request: Request, group_id: int) -> HTTPResponse:
 
         return sanic_json(
             {"message": f"Grup '{group_name}' başarıyla silindi."},
+            status=200
+        )
+
+
+# =============================================================================
+# ENDPOINT 12: GET /api/admin/groups/<group_id>/messages
+# =============================================================================
+
+@admin_bp.get("/groups/<group_id:int>/messages")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def admin_get_group_messages(request: Request, group_id: int) -> HTTPResponse:
+    """
+    Grubun aktif mesajlarını listeler. 
+    selectinload ile gönderen (sender) bilgisi dahil edilir.
+    """
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+        limit = min(100, max(1, int(request.args.get("limit", 50))))
+    except (ValueError, TypeError):
+        page, limit = 1, 50
+
+    offset = (page - 1) * limit
+
+    async with get_session() as session:
+        stmt = (
+            select(Message)
+            .where(Message.group_id == group_id, Message.is_deleted.is_(False))
+            .options(selectinload(Message.sender))
+            .order_by(Message.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        messages = list(await session.scalars(stmt))
+
+        data = []
+        for msg in messages:
+            item = {
+                "id": msg.id,
+                "content": msg.content,
+                "created_at": msg.created_at.isoformat() if msg.created_at else None,
+            }
+            if msg.sender:
+                item["sender"] = {
+                    "id": msg.sender.id,
+                    "name": msg.sender.name,
+                    "surname": msg.sender.surname
+                }
+            data.append(item)
+
+        return sanic_json(
+            {
+                "page": page,
+                "limit": limit,
+                "count": len(data),
+                "data": data,
+            },
+            status=200
+        )
+
+
+# =============================================================================
+# ENDPOINT 13: GET /api/admin/groups/<group_id>/expenses
+# =============================================================================
+
+@admin_bp.get("/groups/<group_id:int>/expenses")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def admin_get_group_expenses(request: Request, group_id: int) -> HTTPResponse:
+    """
+    Grubun aktif harcamalarını listeler.
+    selectinload ile ekleyen bilgisi (added_by_user) dahil edilir.
+    """
+    async with get_session() as session:
+        stmt = (
+            select(Expense)
+            .where(Expense.group_id == group_id, Expense.is_deleted.is_(False))
+            .options(selectinload(Expense.added_by_user))
+            .order_by(Expense.date.desc(), Expense.created_at.desc())
+        )
+        expenses = list(await session.scalars(stmt))
+
+        data = []
+        for exp in expenses:
+            item = {
+                "id": exp.id,
+                "amount": float(exp.amount),
+                "content": exp.content,
+                "date": exp.date.isoformat() if exp.date else None,
+                "bill_photo": exp.bill_photo,
+            }
+            if exp.added_by_user:
+                item["added_by"] = {
+                    "id": exp.added_by_user.id,
+                    "name": exp.added_by_user.name,
+                    "surname": exp.added_by_user.surname
+                }
+            data.append(item)
+
+        return sanic_json(
+            {
+                "count": len(data),
+                "data": data,
+            },
             status=200
         )

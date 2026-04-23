@@ -515,3 +515,31 @@ class AuditLog(Base):
 
     def __repr__(self) -> str:
         return f"<AuditLog id={self.id} admin={self.admin_id} process={self.process_performed!r}>"
+
+
+# =============================================================================
+# BANS
+# =============================================================================
+
+class GroupBan(Base):
+    """
+    Gruptan kalıcı olarak uzaklaştırılan (banlanan) kullanıcılar tablosu.
+    """
+    __tablename__ = "group_bans"
+    __table_args__ = (
+        UniqueConstraint("group_id", "user_id", name="uq_group_user_ban"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    banned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), 
+        default=lambda: datetime.now(timezone.utc)
+    )
+
+    group: Mapped["Group"] = relationship()
+    user: Mapped["User"] = relationship()
+
+    def __repr__(self) -> str:
+        return f"<GroupBan id={self.id} group={self.group_id} user={self.user_id}>"

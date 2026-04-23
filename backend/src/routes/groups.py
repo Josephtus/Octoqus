@@ -28,7 +28,7 @@ from sanic.response import HTTPResponse, json as sanic_json
 from sqlalchemy import asc, select
 
 from src.database import get_session
-from src.models import Group, GroupMember, GroupMemberRole, User
+from src.models import Group, GroupMember, GroupMemberRole, User, GroupBan
 from src.services.security import protected
 
 logger = structlog.get_logger(__name__)
@@ -306,6 +306,12 @@ async def join_group(request: Request, group_id: int) -> HTTPResponse:
                 raise BadRequest("Bu grubun zaten aktif bir üyesisiniz.")
             else:
                 raise BadRequest("Bu grup için zaten bekleyen bir katılma isteğiniz var.")
+
+        # Banlı mı?
+        stmt_ban = select(GroupBan).where(GroupBan.group_id == group_id, GroupBan.user_id == user_id)
+        is_banned = await session.scalar(stmt_ban)
+        if is_banned:
+            raise Forbidden("Bu gruptan kalıcı olarak uzaklaştırıldınız (Ban).")
 
         # Katılma isteği oluştur
         new_membership = GroupMember(
@@ -743,3 +749,89 @@ async def invite_user(request: Request, group_id: int, target_user_id: int) -> H
             },
             status=201
         )
+
+
+# =============================================================================
+# ENDPOINT 11: POST /api/groups/<group_id>/ban/<target_user_id> — Banla
+# =============================================================================
+
+@groups_bp.post("/<group_id:int>/ban/<target_user_id:int>")
+@protected
+async def ban_user(request: Request, group_id: int, target_user_id: int) -> HTTPResponse:
+    """
+    Kullanıcıyı gruptan atar (varsa üyeliğini siler) ve GroupBan tablosuna ekler.
+    Sadece o grubun onaylı lideri yapabilir.
+    """
+    requester_id: int = int(request.ctx.user["sub"])
+
+    if requester_id == target_user_id:
+        raise BadRequest("Kendinizi banlayamazsınız.")
+
+    async with get_session() as session:
+        await _get_approved_group(session, group_id)
+        await _get_leader_membership(session, group_id, requester_id)
+
+        # Zaten banlı mı?
+        stmt_ban = select(GroupBan).where(
+            GroupBan.group_id == group_id,
+            GroupBan.user_id == target_user_id
+        )
+        existing_ban = await session.scalar(stmt_ban)
+        if existing_ban:
+            raise BadRequest("Kullanıcı zaten banlı.")
+
+        # Üyeliği varsa sil
+        target_membership = await _get_membership(session, group_id, target_user_id)
+        if target_membership:
+            await session.delete(target_membership)
+
+        # Ban kaydı ekle
+        new_ban = GroupBan(group_id=group_id, user_id=target_user_id)
+        session.add(new_ban)
+
+        logger.info(
+            "group.user_banned",
+            group_id=group_id,
+            banned_user=target_user_id,
+            by_leader=requester_id
+        )
+
+        return sanic_json({"message": f"Kullanıcı (id={target_user_id}) gruptan banlandı."}, status=201)
+
+
+# =============================================================================
+# ENDPOINT 12: DELETE /api/groups/<group_id>/ban/<target_user_id> — Ban Kaldır
+# =============================================================================
+
+@groups_bp.delete("/<group_id:int>/ban/<target_user_id:int>")
+@protected
+async def unban_user(request: Request, group_id: int, target_user_id: int) -> HTTPResponse:
+    """
+    Kullanıcının banını kaldırır.
+    Sadece o grubun onaylı lideri yapabilir.
+    """
+    requester_id: int = int(request.ctx.user["sub"])
+
+    async with get_session() as session:
+        await _get_approved_group(session, group_id)
+        await _get_leader_membership(session, group_id, requester_id)
+
+        stmt_ban = select(GroupBan).where(
+            GroupBan.group_id == group_id,
+            GroupBan.user_id == target_user_id
+        )
+        ban_record = await session.scalar(stmt_ban)
+
+        if not ban_record:
+            raise NotFound("Bu kullanıcı için aktif bir ban bulunamadı.")
+
+        await session.delete(ban_record)
+
+        logger.info(
+            "group.user_unbanned",
+            group_id=group_id,
+            unbanned_user=target_user_id,
+            by_leader=requester_id
+        )
+
+        return sanic_json({"message": f"Kullanıcı (id={target_user_id}) banı kaldırıldı."}, status=200)
