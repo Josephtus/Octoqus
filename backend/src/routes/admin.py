@@ -130,22 +130,72 @@ def _build_audit_log_response(log: AuditLog) -> dict:
 @protected
 @role_required(GlobalRole.ADMIN)
 async def list_users(request: Request) -> HTTPResponse:
-    """Sistemdeki tüm kullanıcıları (silinmemiş olanlar) listeler."""
+    """
+    Sistemdeki tüm kullanıcıları detaylı bilgileriyle listeler.
+    Query Params:
+        q: Arama terimi (isim, soyisim, email, telefon)
+    """
+    search_query = request.args.get("q", "").strip()
+
     async with get_session() as session:
-        stmt = select(User).where(User.deleted_at.is_(None)).order_by(User.id.desc())
+        from sqlalchemy import or_
+        from sqlalchemy.orm import selectinload
+        from src.models import GroupMember, GroupMemberRole, Group
+
+        stmt = (
+            select(User)
+            .options(
+                selectinload(User.group_memberships).selectinload(GroupMember.group)
+            )
+            .where(User.deleted_at.is_(None))
+        )
+
+        if search_query:
+            stmt = stmt.where(
+                or_(
+                    User.name.ilike(f"%{search_query}%"),
+                    User.surname.ilike(f"%{search_query}%"),
+                    User.mail.ilike(f"%{search_query}%"),
+                    User.phone_number.ilike(f"%{search_query}%")
+                )
+            )
+
+        stmt = stmt.order_by(User.id.desc())
         users = list(await session.scalars(stmt))
         
         data = []
         for u in users:
+            joined_groups = []
+            led_groups = []
+            
+            for membership in u.group_memberships:
+                if not membership.group:
+                    continue
+                    
+                group_info = {
+                    "id": membership.group.id,
+                    "name": membership.group.name,
+                    "is_approved": membership.group.is_approved
+                }
+                
+                if membership.role == GroupMemberRole.GROUP_LEADER:
+                    led_groups.append(group_info)
+                else:
+                    joined_groups.append(group_info)
+
             data.append({
                 "id": u.id,
                 "name": u.name,
                 "surname": u.surname,
                 "mail": u.mail,
+                "birthday": u.birthday.isoformat() if u.birthday else None,
+                "age": u.age,
                 "phone_number": u.phone_number,
                 "role": u.role.value,
                 "is_active": u.is_active,
-                "created_at": u.created_at.isoformat() if u.created_at else None
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+                "joined_groups": joined_groups,
+                "led_groups": led_groups
             })
             
         return sanic_json({"users": data}, status=200)
@@ -1144,3 +1194,67 @@ async def admin_get_group_members(request: Request, group_id: int) -> HTTPRespon
             data.append(item)
 
         return sanic_json({"members": data}, status=200)
+
+
+# =============================================================================
+# ENDPOINT 17: GET /api/admin/users/<user_id>/details — Kullanıcı Detayları
+# =============================================================================
+
+@admin_bp.get("/users/<user_id:int>/details")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def get_user_details(request: Request, user_id: int) -> HTTPResponse:
+    """
+    Belirtilen kullanıcının tüm geçmişini (mesajlar, gruplar, tarihler) getirir.
+    """
+    async with get_session() as session:
+        from sqlalchemy.orm import selectinload
+        from src.models import Message, GroupMember, Group
+
+        stmt = (
+            select(User)
+            .options(
+                selectinload(User.group_memberships).selectinload(GroupMember.group),
+                selectinload(User.messages_sent).selectinload(Message.group)
+            )
+            .where(User.id == user_id, User.deleted_at.is_(None))
+        )
+        user = await session.scalar(stmt)
+        if not user:
+            raise NotFound("Kullanıcı bulunamadı.")
+
+        # Mesaj geçmişi (en yeniden eskiye)
+        messages = [{
+            "id": m.id,
+            "group_id": m.group_id,
+            "group_name": m.group.name if m.group else "Silinmiş Grup",
+            "message_text": m.message_text,
+            "timestamp": m.timestamp.isoformat() if m.timestamp else None,
+            "is_deleted": m.is_deleted
+        } for m in sorted(user.messages_sent, key=lambda x: x.timestamp or datetime.min, reverse=True)]
+
+        # Grup üyelikleri
+        memberships = [{
+            "group_id": m.group_id,
+            "group_name": m.group.name if m.group else "Silinmiş Grup",
+            "role": m.role.value,
+            "joined_at": m.joined_at.isoformat() if m.joined_at else None,
+            "is_approved": m.is_approved
+        } for m in user.group_memberships]
+
+        return sanic_json({
+            "user": {
+                "id": user.id,
+                "name": user.name,
+                "surname": user.surname,
+                "mail": user.mail,
+                "phone_number": user.phone_number,
+                "birthday": user.birthday.isoformat() if user.birthday else None,
+                "age": user.age,
+                "role": user.role.value,
+                "is_active": user.is_active,
+                "created_at": user.created_at.isoformat() if user.created_at else None,
+            },
+            "messages": messages,
+            "memberships": memberships
+        }, status=200)

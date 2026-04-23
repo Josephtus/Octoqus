@@ -64,6 +64,8 @@ def _build_message(msg: Message) -> dict:
         "id":           msg.id,
         "group_id":     msg.group_id,
         "sender_id":    msg.sender_id,
+        "sender_name":  msg.sender.name if msg.sender else "Bilinmeyen",
+        "sender_surname": msg.sender.surname if msg.sender else "Kullanıcı",
         "message_text": msg.message_text,
         "timestamp":    msg.timestamp.isoformat() if msg.timestamp else None,
     }
@@ -123,8 +125,10 @@ async def get_message_history(request: Request, group_id: int) -> HTTPResponse:
         await _get_approved_group(session, group_id)
         await _require_approved_member(session, group_id, user_id)
 
+        from sqlalchemy.orm import selectinload
         stmt = (
             select(Message)
+            .options(selectinload(Message.sender))
             .where(
                 Message.group_id   == group_id,
                 Message.is_deleted.is_(False),
@@ -206,12 +210,23 @@ async def chat_websocket(
     user_id: int = int(payload["sub"])
 
     # =========================================================================
-    # ADIM 2: Grup Üyeliği Doğrulama
+    # ADIM 2: Grup Üyeliği ve Kullanıcı Bilgisi Doğrulama
     # =========================================================================
+    user_name = "Bilinmeyen"
+    user_surname = "Kullanıcı"
+
     try:
         async with get_session() as session:
             await _get_approved_group(session, group_id)
             await _require_approved_member(session, group_id, user_id)
+            
+            # Kullanıcı adını al
+            from src.models import User
+            stmt_user = select(User).where(User.id == user_id)
+            user_obj = await session.scalar(stmt_user)
+            if user_obj:
+                user_name = user_obj.name
+                user_surname = user_obj.surname
     except (NotFound, Forbidden) as exc:
         await ws.send(json.dumps({"type": "error", "message": str(exc)}))
         await ws.close()
@@ -224,7 +239,7 @@ async def chat_websocket(
 
     channel: str = CHANNEL_TEMPLATE.format(group_id=group_id)
 
-    logger.info("ws.connected", user_id=user_id, group_id=group_id)
+    logger.info("ws.connected", user_id=user_id, group_id=group_id, name=user_name)
 
     # Bağlantı onayı gönder
     await ws.send(json.dumps({
@@ -333,6 +348,8 @@ async def chat_websocket(
                 "id":           msg_id,
                 "group_id":     group_id,
                 "sender_id":    user_id,
+                "sender_name":  user_name,
+                "sender_surname": user_surname,
                 "message_text": message_text,
                 "timestamp":    now.isoformat(),
             })

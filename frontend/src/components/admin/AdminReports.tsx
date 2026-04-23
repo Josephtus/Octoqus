@@ -3,9 +3,12 @@ import { apiFetch } from '../../utils/api';
 
 interface Report {
   id: number;
-  reporter: { id: number; name: string };
-  reported_user?: { id: number; name: string };
+  reporter_id: number;
+  reporter_name?: string;
+  reported_user_id?: number;
+  reported_name?: string;
   reported_message_id?: number;
+  message_content?: string;
   aciklama: string;
   status: string;
   created_at: string;
@@ -84,7 +87,7 @@ export const AdminReports: React.FC = () => {
                 <div className="space-y-4">
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Şikayet Eden</label>
-                    <div className="text-slate-200 font-bold">{report.reporter.name} (ID: #{report.reporter.id})</div>
+                    <div className="text-slate-200 font-bold">{report.reporter_name || 'Bilinmeyen'} (ID: #{report.reporter_id})</div>
                   </div>
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-1">Açıklama</label>
@@ -98,12 +101,18 @@ export const AdminReports: React.FC = () => {
                   {report.reported_message_id ? (
                     <div>
                       <label className="text-[10px] font-bold text-orange-500 uppercase tracking-widest block mb-1">Şikayet Edilen Mesaj</label>
-                      <div className="text-xs text-slate-200 mb-2">Mesaj ID: #{report.reported_message_id}</div>
+                      <div className="text-xs text-slate-200 mb-1">Mesaj ID: #{report.reported_message_id}</div>
+                      <div className="text-xs text-slate-400 mb-2 font-bold italic">Sahibi: {report.reported_name || 'Bilinmeyen'}</div>
+                      {report.message_content && (
+                        <div className="bg-orange-500/5 p-3 rounded-xl border border-orange-500/20 text-xs text-slate-300">
+                          {report.message_content}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div>
                       <label className="text-[10px] font-bold text-purple-500 uppercase tracking-widest block mb-1">Şikayet Edilen Kullanıcı</label>
-                      <div className="text-slate-200 font-bold">{report.reported_user?.name} (ID: #{report.reported_user?.id})</div>
+                      <div className="text-slate-200 font-bold">{report.reported_name || 'Bilinmeyen'} (ID: #{report.reported_user_id})</div>
                     </div>
                   )}
                 </div>
