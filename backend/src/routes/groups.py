@@ -260,6 +260,13 @@ async def list_groups(request: Request) -> HTTPResponse:
     query = request.args.get("q", "").strip()
 
     async with get_session() as session:
+        from sqlalchemy import func
+        # Toplam sayıyı al
+        count_stmt = select(func.count(Group.id)).where(Group.is_approved.is_(True))
+        if query:
+            count_stmt = count_stmt.where(Group.name.ilike(f"%{query}%"))
+        total_count = await session.scalar(count_stmt) or 0
+
         # Join with GroupMember to see if the current user is a member
         stmt = (
             select(Group, GroupMember)
@@ -289,6 +296,7 @@ async def list_groups(request: Request) -> HTTPResponse:
             {
                 "page": page,
                 "limit": limit,
+                "total_count": total_count,
                 "count": len(data_list),
                 "groups": data_list,
             },

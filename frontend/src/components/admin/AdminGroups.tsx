@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../../utils/api';
+import { Pagination } from '../common/Pagination';
 
 interface AdminGroup {
   id: number;
@@ -42,6 +43,10 @@ interface Message {
 
 export const AdminGroups: React.FC = () => {
   const [groups, setGroups] = useState<AdminGroup[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const limit = 20;
+
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -60,12 +65,13 @@ export const AdminGroups: React.FC = () => {
   const [behalfFile, setBehalfFile] = useState<File | null>(null);
   const [behalfLoading, setBehalfLoading] = useState(false);
 
-  const fetchGroups = async () => {
+  const fetchGroups = async (pageNum: number = 1) => {
     try {
       setLoading(true);
-      const res = await apiFetch('/admin/groups');
+      const res = await apiFetch(`/admin/groups?page=${pageNum}&limit=${limit}`);
       const data = await res.json();
       setGroups(data.groups || []);
+      setTotalCount(data.total_count || 0);
     } catch (err) {
       console.error("Gruplar yüklenemedi");
     } finally {
@@ -95,8 +101,8 @@ export const AdminGroups: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchGroups();
-  }, []);
+    fetchGroups(page);
+  }, [page]);
 
   const approveGroup = async (id: number) => {
     try {
@@ -268,6 +274,12 @@ export const AdminGroups: React.FC = () => {
               ))}
             </div>
           )}
+          <Pagination 
+            currentPage={page}
+            totalCount={totalCount}
+            limit={limit}
+            onPageChange={setPage}
+          />
         </div>
 
         {/* Detay İnceleme Alanı */}

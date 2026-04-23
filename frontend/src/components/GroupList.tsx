@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../utils/api';
+import { Pagination } from './common/Pagination';
 
 interface Group {
   id: number;
@@ -26,6 +27,9 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, activeGroup
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const limit = 20;
   
   const [joinStatus, setJoinStatus] = useState<JoinStatus | null>(null);
 
@@ -33,31 +37,32 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, activeGroup
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 500);
+    const timer = setTimeout(() => {
+      setPage(1);
+      setDebouncedSearch(searchTerm);
+    }, 500);
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  useEffect(() => {
-    const fetchGroups = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await apiFetch(`/groups?q=${encodeURIComponent(debouncedSearch)}`);
-        const data = await response.json();
-        
-        // Backend dönüş formatına göre (dizi ya da obje içinde groups)
-        const groupsData = Array.isArray(data) ? data : data.groups || [];
-        setGroups(groupsData);
-      } catch (err: any) {
-        console.error('Gruplar yüklenirken hata:', err);
-        setError('Gruplar yüklenirken bir hata oluştu.');
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchGroups = async (pageNum: number = 1) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await apiFetch(`/groups?q=${encodeURIComponent(debouncedSearch)}&page=${pageNum}&limit=${limit}`);
+      const data = await response.json();
+      setGroups(data.groups || []);
+      setTotalCount(data.total_count || 0);
+    } catch (err: any) {
+      console.error('Gruplar yüklenirken hata:', err);
+      setError('Gruplar yüklenirken bir hata oluştu.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchGroups();
-  }, [refreshTrigger]);
+  useEffect(() => {
+    fetchGroups(page);
+  }, [debouncedSearch, page, refreshTrigger]);
 
   const handleJoin = async (groupId: number) => {
     // Aynı anda sadece tek bir gruba işlem durumunu tutuyoruz
@@ -222,6 +227,13 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, activeGroup
           );
         })}
       </div>
+
+      <Pagination 
+        currentPage={page}
+        totalCount={totalCount}
+        limit={limit}
+        onPageChange={setPage}
+      />
     </div>
   );
 };

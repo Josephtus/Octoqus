@@ -33,7 +33,7 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ groupId, onSuccess, on
         formData.append('bill_photo', billPhoto);
       }
 
-      const response = await apiFetch(`/expenses/${groupId}`, {
+      await apiFetch(`/expenses/${groupId}`, {
         method: 'POST',
         body: formData,
       });

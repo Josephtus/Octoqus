@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../../utils/api';
+import { Pagination } from '../common/Pagination';
 
 interface GroupInfo {
   id: number;
@@ -25,6 +26,10 @@ interface AdminUser {
 export const AdminUsers: React.FC = () => {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const limit = 20;
+
   const [viewingDetails, setViewingDetails] = useState<number | null>(null);
   const [details, setDetails] = useState<{
     user: AdminUser;
@@ -36,12 +41,13 @@ export const AdminUsers: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
 
-  const fetchUsers = async (query: string = '') => {
+  const fetchUsers = async (query: string = '', pageNum: number = 1) => {
     try {
       setLoading(true);
-      const res = await apiFetch(`/admin/users?q=${encodeURIComponent(query)}`);
+      const res = await apiFetch(`/admin/users?q=${encodeURIComponent(query)}&page=${pageNum}&limit=${limit}`);
       const data = await res.json();
       setUsers(data.users || []);
+      setTotalCount(data.total_count || 0);
     } catch (err) {
       console.error("Kullanıcılar yüklenemedi");
     } finally {
@@ -50,12 +56,17 @@ export const AdminUsers: React.FC = () => {
   };
 
   useEffect(() => {
-    // Debounce search
+    // Debounce search and reset to page 1
     const timer = setTimeout(() => {
-      fetchUsers(searchTerm);
+      setPage(1);
+      fetchUsers(searchTerm, 1);
     }, 500);
     return () => clearTimeout(timer);
   }, [searchTerm]);
+
+  useEffect(() => {
+    fetchUsers(searchTerm, page);
+  }, [page]);
 
   const toggleUserStatus = async (userId: number, currentStatus: boolean) => {
     try {
@@ -237,6 +248,12 @@ export const AdminUsers: React.FC = () => {
               </div>
             )}
           </div>
+          <Pagination 
+            currentPage={page}
+            totalCount={totalCount}
+            limit={limit}
+            onPageChange={setPage}
+          />
         </div>
       )}
 

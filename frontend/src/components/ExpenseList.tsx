@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../utils/api';
 import { ExpenseCard } from './ExpenseCard';
+import { Pagination } from './common/Pagination';
 
 interface ExpenseListProps {
   groupId: number;
@@ -21,19 +22,22 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const limit = 20;
 
   // Düzenleme state'leri
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [editLoading, setEditLoading] = useState(false);
 
-  const fetchExpenses = async () => {
+  const fetchExpenses = async (pageNum: number = 1) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await apiFetch(`/expenses/${groupId}`);
+      const response = await apiFetch(`/expenses/${groupId}?page=${pageNum}&limit=${limit}`);
       const data = await response.json();
-      const expenseData = Array.isArray(data) ? data : data.expenses || [];
-      setExpenses(expenseData);
+      setExpenses(data.expenses || []);
+      setTotalCount(data.total_count || 0);
     } catch (err: any) {
       console.error('Harcamalar yüklenirken hata:', err);
       setError('Harcamalar yüklenirken bir hata oluştu.');
@@ -43,8 +47,13 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
   };
 
   useEffect(() => {
-    fetchExpenses();
+    setPage(1);
+    fetchExpenses(1);
   }, [groupId, refreshTrigger]);
+
+  useEffect(() => {
+    fetchExpenses(page);
+  }, [page]);
 
   const handleDelete = async (expenseId: number) => {
     if (!window.confirm("Bu harcamayı silmek istediğinize emin misiniz?")) return;
@@ -134,6 +143,13 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
           />
         ))}
       </div>
+
+      <Pagination 
+        currentPage={page}
+        totalCount={totalCount}
+        limit={limit}
+        onPageChange={setPage}
+      />
 
       {/* Düzenleme Modalı */}
       {editingExpense && (

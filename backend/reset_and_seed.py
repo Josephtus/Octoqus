@@ -9,6 +9,10 @@ from src.services.security import hash_password
 
 logger = structlog.get_logger(__name__)
 
+# TEST İÇİN ÜRETİLECEK VERİ SAYILARI
+NUM_GROUPS = 50   # 50 Grup Lideri ve 50 Grup oluşturulacak
+NUM_USERS = 500   # 500 Normal Üye oluşturulacak
+
 async def reset_database():
     """Veritabanındaki tüm tabloları siler ve yeniden oluşturur."""
     logger.info("Veritabanı sıfırlanıyor (Drop & Create)...")
@@ -18,11 +22,10 @@ async def reset_database():
     logger.info("Tablolar başarıyla yeniden oluşturuldu.")
 
 async def seed_data():
-    """Admin, grup liderleri, gruplar ve normal üyeleri oluşturup birbirine bağlar."""
-    logger.info("Örnek veriler (Seed Data) veritabanına ekleniyor...")
+    """Admin, çok sayıda grup lideri, gruplar ve normal üyeleri oluşturup birbirine bağlar."""
+    logger.info(f"Sayfalandırma (Pagination) testi için {NUM_GROUPS} Grup ve {NUM_USERS} Üye oluşturuluyor...")
     
     async with get_session() as session:
-        # Ortak kullanılacak varsayılan şifre
         default_pwd = hash_password("123")
         
         # ---------------------------------------------------------
@@ -42,10 +45,10 @@ async def seed_data():
         session.add(admin_user)
         
         # ---------------------------------------------------------
-        # 2. GRUP LİDERLERİNİ OLUŞTURMA (4 KİŞİ)
+        # 2. GRUP LİDERLERİNİ OLUŞTURMA
         # ---------------------------------------------------------
         group_leaders = []
-        for i in range(1, 5):
+        for i in range(1, NUM_GROUPS + 1):
             leader = User(
                 name="Leader",
                 surname=str(i),
@@ -53,32 +56,34 @@ async def seed_data():
                 password=default_pwd,
                 age=25,
                 birthday=date(1998, 5, 10),
-                phone_number=f"+90555111000{i}",
+                # Telefon numarası benzersiz (unique) olmalı
+                phone_number=f"+90555111{str(i).zfill(4)}",
                 role=GlobalRole.GROUP_LEADER,
                 is_active=True
             )
             session.add(leader)
             group_leaders.append(leader)
             
-        # ID'lerin oluşması için veritabanına flush atıyoruz
+        # Toplu halde veritabanına geçir (ID'leri almak için)
         await session.flush() 
 
         # ---------------------------------------------------------
-        # 3. GRUPLARI OLUŞTURMA VE LİDERLERİ ATAMA (4 GRUP)
+        # 3. GRUPLARI OLUŞTURMA VE LİDERLERİ ATAMA
         # ---------------------------------------------------------
         groups = []
         for i, leader in enumerate(group_leaders, 1):
-            # Grubu oluştur (Admin onaylamış sayıyoruz)
             group = Group(
-                name=f"Grup {i}",
-                content=f"{i}. Test Harcama Grubu",
+                name=f"Test Grubu {i}",
+                content=f"{i}. Büyük Ölçekli Test Harcama Grubu",
                 is_approved=True 
             )
             session.add(group)
-            await session.flush() # Grubun ID'sini almak için flush
             groups.append(group)
             
-            # Lideri, kendi grubuna 'GROUP_LEADER' rolüyle ekle
+        await session.flush() # Grupların ID'lerini almak için
+        
+        # Grup üyeliği (Liderleri kendi gruplarına ekle)
+        for leader, group in zip(group_leaders, groups):
             gm_leader = GroupMember(
                 user_id=leader.id,
                 group_id=group.id,
@@ -88,37 +93,43 @@ async def seed_data():
             session.add(gm_leader)
 
         # ---------------------------------------------------------
-        # 4. NORMAL ÜYELERİ OLUŞTURMA (16 KİŞİ) VE GRUPLARA DAĞITMA
+        # 4. NORMAL ÜYELERİ OLUŞTURMA
         # ---------------------------------------------------------
-        for i in range(1, 17):
+        users = []
+        for i in range(1, NUM_USERS + 1):
             user = User(
-                name="User",
+                name="TestUser",
                 surname=str(i),
                 mail=f"user{i}@example.com",
                 password=default_pwd,
                 age=22,
                 birthday=date(2002, 3, 15),
-                phone_number=f"+90555222{(str(i).zfill(3))}",
+                phone_number=f"+90555222{str(i).zfill(4)}",
                 role=GlobalRole.USER,
                 is_active=True
             )
             session.add(user)
-            await session.flush() # Kullanıcı ID'si için flush
+            users.append(user)
             
-            # Üyeyi rastgele bir gruba 'USER' rolüyle ata
+        await session.flush() # Normal kullanıcı ID'lerini almak için
+        
+        # ---------------------------------------------------------
+        # 5. NORMAL ÜYELERİ RASTGELE GRUPLARA DAĞITMA
+        # ---------------------------------------------------------
+        for user in users:
             random_group = random.choice(groups)
             gm_user = GroupMember(
                 user_id=user.id,
                 group_id=random_group.id,
                 role=GroupMemberRole.USER,
-                is_approved=True  # Test için doğrudan onaylı başlatıyoruz
+                is_approved=True 
             )
             session.add(gm_user)
 
         # Tüm işlemleri veritabanına kalıcı olarak kaydet
         await session.commit()
         
-    logger.info("Admin (1), Grup Lideri (4), Grup (4) ve Normal Üyeler (16) başarıyla oluşturuldu!")
+    logger.info(f"BAŞARILI: 1 Admin, {NUM_GROUPS} Grup/Lider ve {NUM_USERS} Normal Üye eklendi!")
 
 async def main():
     try:

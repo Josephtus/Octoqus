@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../../utils/api';
+import { Pagination } from '../common/Pagination';
 
 interface AuditLog {
   id: number;
@@ -12,22 +13,27 @@ interface AuditLog {
 export const AdminLogs: React.FC = () => {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const limit = 50;
+
+  const fetchLogs = async (pageNum: number = 1) => {
+    try {
+      setLoading(true);
+      const res = await apiFetch(`/admin/audit-logs?page=${pageNum}&limit=${limit}`);
+      const data = await res.json();
+      setLogs(data.logs || []);
+      setTotalCount(data.total_count || 0);
+    } catch (err) {
+      console.error("Loglar yüklenemedi");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchLogs = async () => {
-      try {
-        setLoading(true);
-        const res = await apiFetch('/admin/audit-logs');
-        const data = await res.json();
-        setLogs(data.logs || []);
-      } catch (err) {
-        console.error("Loglar yüklenemedi");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchLogs();
-  }, []);
+    fetchLogs(page);
+  }, [page]);
 
   return (
     <div className="space-y-6">
@@ -66,8 +72,16 @@ export const AdminLogs: React.FC = () => {
             </tbody>
           </table>
           {logs.length === 0 && <div className="p-8 text-center text-slate-600 italic">Kayıtlı log bulunmuyor.</div>}
+          
+          <Pagination 
+            currentPage={page}
+            totalCount={totalCount}
+            limit={limit}
+            onPageChange={setPage}
+          />
         </div>
       )}
     </div>
   );
 };
+

@@ -134,14 +134,37 @@ async def list_users(request: Request) -> HTTPResponse:
     Sistemdeki tüm kullanıcıları detaylı bilgileriyle listeler.
     Query Params:
         q: Arama terimi (isim, soyisim, email, telefon)
+        page: Sayfa numarası (default 1)
+        limit: Sayfa başına kayıt sayısı (default 20)
     """
     search_query = request.args.get("q", "").strip()
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+        limit = min(100, max(1, int(request.args.get("limit", 20))))
+    except (ValueError, TypeError):
+        page, limit = 1, 20
+
+    offset = (page - 1) * limit
 
     async with get_session() as session:
-        from sqlalchemy import or_
+        from sqlalchemy import or_, func
         from sqlalchemy.orm import selectinload
         from src.models import GroupMember, GroupMemberRole, Group
 
+        # Toplam sayıyı al
+        count_stmt = select(func.count(User.id)).where(User.deleted_at.is_(None))
+        if search_query:
+            count_stmt = count_stmt.where(
+                or_(
+                    User.name.ilike(f"%{search_query}%"),
+                    User.surname.ilike(f"%{search_query}%"),
+                    User.mail.ilike(f"%{search_query}%"),
+                    User.phone_number.ilike(f"%{search_query}%")
+                )
+            )
+        total_count = await session.scalar(count_stmt) or 0
+
+        # Verileri al
         stmt = (
             select(User)
             .options(
@@ -160,7 +183,7 @@ async def list_users(request: Request) -> HTTPResponse:
                 )
             )
 
-        stmt = stmt.order_by(User.id.desc())
+        stmt = stmt.order_by(User.id.desc()).offset(offset).limit(limit)
         users = list(await session.scalars(stmt))
         
         data = []
@@ -198,7 +221,12 @@ async def list_users(request: Request) -> HTTPResponse:
                 "led_groups": led_groups
             })
             
-        return sanic_json({"users": data}, status=200)
+        return sanic_json({
+            "users": data,
+            "page": page,
+            "limit": limit,
+            "total_count": total_count
+        }, status=200)
 
 
 # =============================================================================
@@ -314,15 +342,35 @@ async def approve_group(request: Request, group_id: int) -> HTTPResponse:
 @protected
 @role_required(GlobalRole.ADMIN)
 async def list_groups(request: Request) -> HTTPResponse:
-    """Sistemdeki tüm grupları (onaylı ve onay bekleyen) listeler."""
+    """
+    Sistemdeki tüm grupları (onaylı ve onay bekleyen) listeler.
+    Query Params:
+        page: Sayfa numarası (default 1)
+        limit: Sayfa başına kayıt sayısı (default 20)
+    """
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+        limit = min(100, max(1, int(request.args.get("limit", 20))))
+    except (ValueError, TypeError):
+        page, limit = 1, 20
+
+    offset = (page - 1) * limit
+
     async with get_session() as session:
         from sqlalchemy import func
+        
+        # Toplam sayıyı al
+        count_stmt = select(func.count(Group.id))
+        total_count = await session.scalar(count_stmt) or 0
+
         # Grup ve üye sayısını birlikte çek
         stmt = (
             select(Group, func.count(GroupMember.id).label("member_count"))
             .outerjoin(GroupMember, GroupMember.group_id == Group.id)
             .group_by(Group.id)
             .order_by(Group.created_at.desc())
+            .offset(offset)
+            .limit(limit)
         )
         results = await session.execute(stmt)
         
@@ -337,7 +385,12 @@ async def list_groups(request: Request) -> HTTPResponse:
                 "member_count": member_count
             })
             
-        return sanic_json({"groups": data}, status=200)
+        return sanic_json({
+            "groups": data,
+            "page": page,
+            "limit": limit,
+            "total_count": total_count
+        }, status=200)
 
 
 # =============================================================================
@@ -461,6 +514,12 @@ async def list_reports(request: Request) -> HTTPResponse:
     offset = (page - 1) * limit
 
     async with get_session() as session:
+        from sqlalchemy import func
+
+        # Toplam sayıyı al
+        count_stmt = select(func.count(Report.id))
+        total_count = await session.scalar(count_stmt) or 0
+
         # PENDING olanları öncelikli getir, ardından creation date desc
         stmt = (
             select(Report)
@@ -485,6 +544,7 @@ async def list_reports(request: Request) -> HTTPResponse:
             {
                 "page": page,
                 "limit": limit,
+                "total_count": total_count,
                 "count": len(reports),
                 "reports": [_build_report_response(r) for r in reports],
             },
@@ -551,6 +611,12 @@ async def list_audit_logs(request: Request) -> HTTPResponse:
     offset = (page - 1) * limit
 
     async with get_session() as session:
+        from sqlalchemy import func
+
+        # Toplam sayıyı al
+        count_stmt = select(func.count(AuditLog.id))
+        total_count = await session.scalar(count_stmt) or 0
+
         stmt = (
             select(AuditLog)
             .order_by(AuditLog.timestamp.desc())
@@ -563,6 +629,7 @@ async def list_audit_logs(request: Request) -> HTTPResponse:
             {
                 "page": page,
                 "limit": limit,
+                "total_count": total_count,
                 "count": len(logs),
                 "logs": [_build_audit_log_response(log) for log in logs],
             },
