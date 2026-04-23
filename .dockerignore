@@ -1,0 +1,7 @@
+mysql-data/
+venv/
+.git/
+__pycache__/
+.env
+*.pyc
+.DS_Store

@@ -1,4 +1,7 @@
-.env
 __pycache__/
 *.pyc
-mysql_data/
+.env
+.DS_Store
+mysql-data/
+venv/
+.pytest_cache/
