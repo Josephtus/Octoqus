@@ -432,20 +432,20 @@ async def list_reports(request: Request) -> HTTPResponse:
 
 
 # =============================================================================
-# ENDPOINT 5.5: PUT /api/admin/reports/<report_id> — Şikayet Durumu Güncelle
+# ENDPOINT 5.5: PUT /api/admin/reports/<report_id>/status — Şikayet Durumu Güncelle
 # =============================================================================
 
-@admin_bp.put("/reports/<report_id:int>")
+@admin_bp.put("/reports/<report_id:int>/status")
 @protected
 @role_required(GlobalRole.ADMIN)
 async def update_report_status(request: Request, report_id: int) -> HTTPResponse:
-    """Şikayeti çözüldü (resolved) veya reddedildi (dismissed) olarak işaretler."""
+    """Şikayeti çözüldü (resolved), reddedildi (dismissed) veya incelendi (reviewed) olarak işaretler."""
     admin_id: int = int(request.ctx.user["sub"])
     body = request.json or {}
     new_status = body.get("status")
 
-    if new_status not in [ReportStatus.RESOLVED.value, ReportStatus.DISMISSED.value]:
-        raise BadRequest("Geçersiz durum. 'resolved' veya 'dismissed' olmalıdır.")
+    if new_status not in [s.value for s in ReportStatus]:
+        raise BadRequest(f"Geçersiz durum. Geçerli durumlar: {', '.join([s.value for s in ReportStatus])}")
 
     async with get_session() as session:
         stmt = select(Report).where(Report.id == report_id)
@@ -1139,85 +1139,3 @@ async def admin_get_group_members(request: Request, group_id: int) -> HTTPRespon
             data.append(item)
 
         return sanic_json({"members": data}, status=200)
-
-
-# =============================================================================
-# ENDPOINT 17: GET /api/admin/reports — Tüm Şikayetleri Listele
-# =============================================================================
-
-@admin_bp.get("/reports")
-@protected
-@role_required(GlobalRole.ADMIN)
-async def list_all_reports(request: Request) -> HTTPResponse:
-    """
-    Sistemdeki tüm şikayetleri listeler.
-    """
-    async with get_session() as session:
-        stmt = (
-            select(Report)
-            .options(
-                selectinload(Report.reporter),
-                selectinload(Report.reported_user),
-                selectinload(Report.reported_message)
-            )
-            .order_by(Report.created_at.desc())
-        )
-        reports = list(await session.scalars(stmt))
-
-        return sanic_json({
-            "count": len(reports),
-            "reports": [
-                {
-                    "id": r.id,
-                    "reporter": {
-                        "id": r.reporter.id,
-                        "name": f"{r.reporter.name} {r.reporter.surname}"
-                    },
-                    "reported_user": {
-                        "id": r.reported_user.id,
-                        "name": f"{r.reported_user.name} {r.reported_user.surname}"
-                    } if r.reported_user else None,
-                    "reported_message_id": r.reported_message_id,
-                    "aciklama": r.aciklama,
-                    "status": r.status.value,
-                    "created_at": r.created_at.isoformat()
-                }
-                for r in reports
-            ]
-        }, status=200)
-
-
-# =============================================================================
-# ENDPOINT 18: PUT /api/admin/reports/<report_id>/status — Şikayet Durumu Güncelle
-# =============================================================================
-
-@admin_bp.put("/reports/<report_id:int>/status")
-@protected
-@role_required(GlobalRole.ADMIN)
-async def update_report_status(request: Request, report_id: int) -> HTTPResponse:
-    """
-    Bir şikayetin durumunu günceller (resolved, dismissed, reviewed).
-    """
-    body = request.json
-    new_status = body.get("status")
-
-    if new_status not in [s.value for s in ReportStatus]:
-        raise BadRequest(f"Geçersiz durum: {new_status}")
-
-    async with get_session() as session:
-        stmt = select(Report).where(Report.id == report_id)
-        report = await session.scalar(stmt)
-
-        if not report:
-            raise NotFound("Şikayet bulunamadı.")
-
-        report.status = ReportStatus(new_status)
-        
-        logger.info(
-            "admin.report_status_updated",
-            report_id=report_id,
-            status=new_status,
-            by_admin=request.ctx.user["sub"]
-        )
-
-        return sanic_json({"message": f"Şikayet durumu '{new_status}' olarak güncellendi."}, status=200)
