@@ -17,7 +17,7 @@ export const AdminLogs: React.FC = () => {
     const fetchLogs = async () => {
       try {
         setLoading(true);
-        const res = await apiFetch('/admin/logs');
+        const res = await apiFetch('/admin/audit-logs');
         const data = await res.json();
         setLogs(data.logs || []);
       } catch (err) {

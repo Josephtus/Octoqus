@@ -44,15 +44,15 @@ from src.database import Base
 
 class GlobalRole(str, enum.Enum):
     """Sistemdeki genel kullanıcı rolü."""
-    USER         = "user"
-    GROUP_LEADER = "group_leader"
-    ADMIN        = "admin"
+    USER         = "USER"
+    GROUP_LEADER = "GROUP_LEADER"
+    ADMIN        = "ADMIN"
 
 
 class GroupMemberRole(str, enum.Enum):
     """Bir grup içindeki üye rolü."""
-    USER         = "user"
-    GROUP_LEADER = "group_leader"
+    USER         = "USER"
+    GROUP_LEADER = "GROUP_LEADER"
 
 
 class ReportStatus(str, enum.Enum):

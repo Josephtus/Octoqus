@@ -49,6 +49,7 @@ from src.routes.expenses import (
     _save_receipt,
 )
 from src.services.security import protected, role_required
+from src.services.schemas import BaseUserUpdateSchema
 
 logger = structlog.get_logger(__name__)
 
@@ -228,6 +229,16 @@ async def approve_group(request: Request, group_id: int) -> HTTPResponse:
             return sanic_json({"message": "Grup zaten onaylı."}, status=200)
 
         group.is_approved = True
+
+        # Gruptaki lider(ler)in üyeliğini de onaylı duruma getir (zaten öyle olmalı ama garantiye alalım)
+        from src.models import GroupMember, GroupMemberRole
+        stmt_leader = select(GroupMember).where(
+            GroupMember.group_id == group_id,
+            GroupMember.role == GroupMemberRole.GROUP_LEADER
+        )
+        leaders = await session.scalars(stmt_leader)
+        for leader in leaders:
+            leader.is_approved = True
 
         # Audit Log
         await _create_audit_log(
@@ -509,12 +520,6 @@ async def list_audit_logs(request: Request) -> HTTPResponse:
         )
 
 
-@admin_bp.get("/logs")
-@protected
-@role_required(GlobalRole.ADMIN)
-async def list_audit_logs_alias(request: Request) -> HTTPResponse:
-    """Alias for /audit-logs — frontend AdminLogs bileşeni bu rotayı kullanır."""
-    return await list_audit_logs(request)
 
 
 # =============================================================================
@@ -972,7 +977,7 @@ async def admin_get_group_messages(request: Request, group_id: int) -> HTTPRespo
             select(Message)
             .where(Message.group_id == group_id, Message.is_deleted.is_(False))
             .options(selectinload(Message.sender))
-            .order_by(Message.created_at.desc())
+            .order_by(Message.timestamp.desc())
             .offset(offset)
             .limit(limit)
         )
@@ -982,8 +987,8 @@ async def admin_get_group_messages(request: Request, group_id: int) -> HTTPRespo
         for msg in messages:
             item = {
                 "id": msg.id,
-                "content": msg.content,
-                "created_at": msg.created_at.isoformat() if msg.created_at else None,
+                "content": msg.message_text,
+                "created_at": msg.timestamp.isoformat() if msg.timestamp else None,
             }
             if msg.sender:
                 item["sender"] = {
@@ -1117,7 +1122,7 @@ async def admin_get_group_members(request: Request, group_id: int) -> HTTPRespon
             select(GroupMember)
             .where(GroupMember.group_id == group_id)
             .options(selectinload(GroupMember.user))
-            .order_by(GroupMember.role.desc(), GroupMember.created_at.asc())
+            .order_by(GroupMember.role.desc(), GroupMember.joined_at.asc())
         )
         memberships = list(await session.scalars(stmt))
 
@@ -1128,7 +1133,7 @@ async def admin_get_group_members(request: Request, group_id: int) -> HTTPRespon
                 "user_id": m.user_id,
                 "role": m.role.value,
                 "is_approved": m.is_approved,
-                "joined_at": m.created_at.isoformat() if m.created_at else None,
+                "joined_at": m.joined_at.isoformat() if m.joined_at else None,
             }
             if m.user:
                 item["user"] = {

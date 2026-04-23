@@ -10,6 +10,7 @@ interface AdminUser {
   role: string;
   is_active: boolean;
   age?: number;
+  birthday?: string;
 }
 
 export const AdminUsers: React.FC = () => {
@@ -57,7 +58,8 @@ export const AdminUsers: React.FC = () => {
           name: editingUser.name,
           surname: editingUser.surname,
           phone_number: editingUser.phone_number,
-          age: editingUser.age || 0
+          age: editingUser.age || 0,
+          birthday: editingUser.birthday
         })
       });
       setEditingUser(null);
@@ -184,6 +186,15 @@ export const AdminUsers: React.FC = () => {
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:border-[#00f0ff] outline-none"
                   value={editingUser.age || ''}
                   onChange={(e) => setEditingUser({...editingUser, age: parseInt(e.target.value) || 0})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Doğum Tarihi</label>
+                <input 
+                  type="date" 
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:border-[#00f0ff] outline-none"
+                  value={editingUser.birthday || ''}
+                  onChange={(e) => setEditingUser({...editingUser, birthday: e.target.value})}
                 />
               </div>
               <div className="pt-4 flex gap-3">

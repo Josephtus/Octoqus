@@ -139,7 +139,7 @@ async def list_followers(request: Request, user_id: int) -> HTTPResponse:
     offset = (page - 1) * limit
 
     async with get_session() as session:
-        await _get_active_user(session, user_id)
+        await get_active_user(session, user_id)
 
         # Sorgu: follower_table ile User tablosunu joinleyip "follower_id" leri çeker
         stmt = (

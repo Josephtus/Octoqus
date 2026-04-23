@@ -256,24 +256,41 @@ async def list_groups(request: Request) -> HTTPResponse:
         page, limit = 1, 20
 
     offset = (page - 1) * limit
+    user_id: int = int(request.ctx.user["sub"])
+    query = request.args.get("q", "").strip()
 
     async with get_session() as session:
+        # Join with GroupMember to see if the current user is a member
         stmt = (
-            select(Group)
+            select(Group, GroupMember)
+            .outerjoin(
+                GroupMember,
+                (GroupMember.group_id == Group.id) & (GroupMember.user_id == user_id)
+            )
             .where(Group.is_approved.is_(True))
-            .order_by(Group.created_at.desc())
-            .offset(offset)
-            .limit(limit)
         )
-        result = await session.scalars(stmt)
-        groups = result.all()
+        
+        if query:
+            stmt = stmt.where(Group.name.ilike(f"%{query}%"))
+            
+        stmt = stmt.order_by(Group.created_at.desc()).offset(offset).limit(limit)
+        result = await session.execute(stmt)
+        
+        data_list = []
+        for group, membership in result:
+            g_dict = _build_group_response(group)
+            if membership:
+                g_dict["role"] = membership.role.value
+                # Membership status overrides group approval status in this context for the UI
+                g_dict["is_approved"] = membership.is_approved
+            data_list.append(g_dict)
 
         return sanic_json(
             {
                 "page": page,
                 "limit": limit,
-                "count": len(groups),
-                "groups": [_build_group_response(g) for g in groups],
+                "count": len(data_list),
+                "groups": data_list,
             },
             status=200,
         )
@@ -810,11 +827,13 @@ async def invite_user(request: Request, group_id: int, target_user_id: int) -> H
             else:
                 raise BadRequest("Bu kullanıcı için zaten bekleyen bir üyelik/istek/davet var.")
 
+        is_leader = requester_membership.role == GroupMemberRole.GROUP_LEADER
+        
         new_membership = GroupMember(
             user_id=target_user_id,
             group_id=group_id,
             role=GroupMemberRole.USER,
-            is_approved=False
+            is_approved=is_leader  # Lider davet ederse direkt onaylı başlar
         )
         session.add(new_membership)
 

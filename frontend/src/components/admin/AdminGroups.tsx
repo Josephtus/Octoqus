@@ -138,6 +138,28 @@ export const AdminGroups: React.FC = () => {
     }
   };
 
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+
+  const handleEditExpenseSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedGroupId || !editingExpense) return;
+    
+    try {
+      await apiFetch(`/admin/expenses/${selectedGroupId}/${editingExpense.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          amount: editingExpense.amount,
+          content: editingExpense.content,
+          date: editingExpense.date
+        })
+      });
+      setEditingExpense(null);
+      fetchGroupDetails(selectedGroupId);
+    } catch (err) {
+      alert("Güncelleme başarısız");
+    }
+  };
+
   const handleOnBehalfSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedGroupId || !behalfTarget) return;
@@ -270,12 +292,22 @@ export const AdminGroups: React.FC = () => {
                         <div className="font-bold text-slate-100">{exp.amount} TL</div>
                         <div className="text-xs text-slate-400 line-clamp-1">{exp.content || 'Açıklama yok'}</div>
                       </div>
-                      <button 
-                        onClick={() => deleteExpense(selectedGroupId, exp.id)}
-                        className="opacity-0 group-hover/exp:opacity-100 transition-all bg-red-500/10 text-red-500 p-2 rounded-lg hover:bg-red-500 hover:text-white"
-                      >
-                        🗑️
-                      </button>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => setEditingExpense(exp)}
+                          className="opacity-0 group-hover/exp:opacity-100 transition-all bg-blue-500/10 text-blue-500 p-2 rounded-lg hover:bg-blue-500 hover:text-white"
+                          title="Harcamayı Düzenle"
+                        >
+                          ✏️
+                        </button>
+                        <button 
+                          onClick={() => deleteExpense(selectedGroupId, exp.id)}
+                          className="opacity-0 group-hover/exp:opacity-100 transition-all bg-red-500/10 text-red-500 p-2 rounded-lg hover:bg-red-500 hover:text-white"
+                          title="Harcamayı Sil"
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     </div>
                   ))}
                   {expenses.length === 0 && <div className="text-center py-8 text-slate-600 text-xs italic">Harcama bulunamadı.</div>}
@@ -456,6 +488,60 @@ export const AdminGroups: React.FC = () => {
                 </button>
                 <button 
                   type="button" onClick={() => setIsOnBehalfModalOpen(false)}
+                  className="flex-1 bg-slate-800 text-slate-300 font-bold py-3 rounded-xl hover:bg-slate-700"
+                >
+                  İptal
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Harcama Düzenleme Modalı */}
+      {editingExpense && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+              <h4 className="text-lg font-bold text-slate-100">Harcamayı Düzenle (Admin)</h4>
+              <button onClick={() => setEditingExpense(null)} className="text-slate-500 hover:text-white">✕</button>
+            </div>
+            <form onSubmit={handleEditExpenseSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-widest">Tutar (₺)</label>
+                <input 
+                  type="number" step="0.01" required
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-[#00f0ff] font-bold focus:border-[#00f0ff] outline-none"
+                  value={editingExpense.amount}
+                  onChange={(e) => setEditingExpense({...editingExpense, amount: parseFloat(e.target.value) || 0})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-widest">Açıklama</label>
+                <input 
+                  type="text" required
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 focus:border-[#00f0ff] outline-none"
+                  value={editingExpense.content || ''}
+                  onChange={(e) => setEditingExpense({...editingExpense, content: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1 tracking-widest">Tarih</label>
+                <input 
+                  type="date" required
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 focus:border-[#00f0ff] outline-none"
+                  value={editingExpense.date}
+                  onChange={(e) => setEditingExpense({...editingExpense, date: e.target.value})}
+                />
+              </div>
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="submit"
+                  className="flex-1 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-500 transition-all"
+                >
+                  Güncelle
+                </button>
+                <button 
+                  type="button" onClick={() => setEditingExpense(null)}
                   className="flex-1 bg-slate-800 text-slate-300 font-bold py-3 rounded-xl hover:bg-slate-700"
                 >
                   İptal

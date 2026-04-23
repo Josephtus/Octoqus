@@ -29,12 +29,20 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, activeGroup
   
   const [joinStatus, setJoinStatus] = useState<JoinStatus | null>(null);
 
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   useEffect(() => {
     const fetchGroups = async () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await apiFetch('/groups');
+        const response = await apiFetch(`/groups?q=${encodeURIComponent(debouncedSearch)}`);
         const data = await response.json();
         
         // Backend dönüş formatına göre (dizi ya da obje içinde groups)
@@ -108,6 +116,16 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, activeGroup
         <h3 className="text-3xl font-extrabold text-slate-100 tracking-tight">
           Gruplar
         </h3>
+        <div className="relative w-full max-w-md">
+          <input 
+            type="text" 
+            placeholder="Grup ara..." 
+            className="w-full bg-slate-900 border border-slate-800 rounded-2xl px-6 py-3 text-slate-200 focus:border-[#00f0ff] outline-none shadow-xl transition-all"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500">🔍</span>
+        </div>
       </div>
       
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
