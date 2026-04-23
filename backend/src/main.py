@@ -290,6 +290,9 @@ from src.routes.messages import messages_bp  # noqa: E402
 from src.routes.social import social_bp      # noqa: E402
 from src.routes.reports import reports_bp    # noqa: E402
 
+# ── Görev 10: Admin Paneli ve Audit Log ────────────────────────────────────
+from src.routes.admin import admin_bp        # noqa: E402
+
 # Tüm blueprint'leri tek seferinde kaydet
 app.blueprint(auth_bp)
 app.blueprint(users_bp)
@@ -298,10 +301,7 @@ app.blueprint(expenses_bp)
 app.blueprint(messages_bp)
 app.blueprint(social_bp)
 app.blueprint(reports_bp)
-
-# ── Görev 10 ve sonrası ───────────────────────────────────────────────────
-# from src.routes.admin import admin_bp
-# app.blueprint(admin_bp)
+app.blueprint(admin_bp)
 
 
 # =============================================================================
