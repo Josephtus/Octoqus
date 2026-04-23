@@ -21,7 +21,7 @@ COPY requirements.txt .
 
 # Wheel olarak derle (runner stage'e kopyalanacak)
 RUN pip install --upgrade pip && \
-    pip wheel --no-cache-dir --no-deps --wheel-dir /wheels -r requirements.txt
+    pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
 
 
 # --- Runner Stage ---
