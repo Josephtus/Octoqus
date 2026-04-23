@@ -22,7 +22,17 @@ export const apiFetch = async (endpoint: string, options: RequestInit = {}) => {
       localStorage.removeItem('token');
       window.location.reload();
     }
-    throw new Error(`Request failed with status ${response.status}`);
+    
+    let errorMsg = `Request failed with status ${response.status}`;
+    try {
+      const errorData = await response.json();
+      if (errorData.message) errorMsg = errorData.message;
+      else if (errorData.error) errorMsg = errorData.error;
+    } catch (e) {
+      // JSON değilse veya parse edilemiyorsa varsayılan mesaj kalır
+    }
+    
+    throw new Error(errorMsg);
   }
 
   return response;

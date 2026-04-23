@@ -28,6 +28,8 @@ from sqlalchemy import select
 from src.database import get_session
 from src.models import User
 from src.services.security import hash_password, protected, verify_password
+from src.services.schemas import BaseUserUpdateSchema
+from src.services.common import get_active_user, detect_mime
 
 logger = structlog.get_logger(__name__)
 
@@ -69,60 +71,6 @@ MAGIC_SIGNATURES: list[tuple[bytes, str]] = [
 # =============================================================================
 # Pydantic Şemaları
 # =============================================================================
-
-class UpdateProfileRequest(BaseModel):
-    """
-    Profil güncelleme isteği — tüm alanlar opsiyonel (partial update).
-    Gönderilmeyen alanlar değiştirilmez.
-    """
-    name: str | None = None
-    surname: str | None = None
-    age: int | None = None
-    phone_number: str | None = None
-    birthday: str | None = None  # ISO format: "1995-07-20"
-
-    @field_validator("name", "surname")
-    @classmethod
-    def strip_and_validate_str(cls, v: str | None) -> str | None:
-        if v is None:
-            return v
-        v = v.strip()
-        if not v:
-            raise ValueError("Bu alan boş string olamaz.")
-        if len(v) > 100:
-            raise ValueError("Bu alan en fazla 100 karakter olabilir.")
-        return v
-
-    @field_validator("age")
-    @classmethod
-    def validate_age(cls, v: int | None) -> int | None:
-        if v is not None and (v < 13 or v > 120):
-            raise ValueError("Yaş 13 ile 120 arasında olmalıdır.")
-        return v
-
-    @field_validator("phone_number")
-    @classmethod
-    def validate_phone(cls, v: str | None) -> str | None:
-        if v is None:
-            return v
-        v = v.strip()
-        if not v.startswith("+") or not v[1:].isdigit():
-            raise ValueError("Telefon numarası uluslararası formatta olmalıdır. Örn: +905551234567")
-        if len(v) < 10 or len(v) > 16:
-            raise ValueError("Telefon numarası 10-16 karakter arasında olmalıdır.")
-        return v
-
-    @field_validator("birthday")
-    @classmethod
-    def validate_birthday(cls, v: str | None) -> str | None:
-        if v is None:
-            return v
-        try:
-            date.fromisoformat(v)
-        except ValueError:
-            raise ValueError("Doğum tarihi ISO formatında olmalıdır. Örn: 1995-07-20")
-        return v
-
 
 class ChangePasswordRequest(BaseModel):
     """Şifre değiştirme isteği şeması."""
@@ -179,23 +127,6 @@ def _build_private_profile(user: User) -> dict:
     return profile
 
 
-def _detect_mime_from_bytes(data: bytes) -> str | None:
-    """
-    Dosyanın ilk byte'larını okuyarak gerçek MIME tipini tespit eder.
-    Content-Type başlığının sahte olabileceği durumlar için güvenlik katmanı.
-
-    Returns:
-        Tespit edilen MIME tipi string'i veya None (tanımsız format)
-    """
-    for signature, mime_type in MAGIC_SIGNATURES:
-        if data[: len(signature)] == signature:
-            # WebP için ekstra kontrol: RIFF....WEBP
-            if mime_type == "image/webp":
-                if len(data) >= 12 and data[8:12] == b"WEBP":
-                    return mime_type
-                return None  # RIFF ama WEBP değil
-            return mime_type
-    return None
 
 
 async def _save_avatar(file_body: bytes, original_filename: str) -> str:
@@ -231,16 +162,7 @@ async def _save_avatar(file_body: bytes, original_filename: str) -> str:
     return f"/uploads/avatars/{unique_name}"
 
 
-async def _get_active_user(session, user_id: int) -> User:
-    """
-    Aktif ve silinmemiş kullanıcıyı getirir.
-    Bulunamazsa NotFound fırlatır.
-    """
-    stmt = select(User).where(User.id == user_id, User.deleted_at.is_(None))
-    user = await session.scalar(stmt)
-    if not user:
-        raise NotFound("Kullanıcı bulunamadı.")
-    return user
+# (Removed local _get_active_user, using src.services.common.get_active_user)
 
 
 # =============================================================================
@@ -273,18 +195,14 @@ async def update_profile(request: Request) -> HTTPResponse:
         raise BadRequest("Güncellenecek en az bir alan gönderilmelidir.")
 
     try:
-        data = UpdateProfileRequest.model_validate(body)
+        data = BaseUserUpdateSchema.model_validate(body)
     except ValidationError as exc:
-        errors = [
-            {"field": e["loc"][0] if e["loc"] else "unknown", "message": e["msg"]}
-            for e in exc.errors()
-        ]
-        raise BadRequest(f"Validasyon hatası: {errors}")
+        raise BadRequest(f"Validasyon hatası: {exc.errors()}")
 
     user_id: int = int(request.ctx.user["sub"])
 
     async with get_session() as session:
-        user = await _get_active_user(session, user_id)
+        user = await get_active_user(session, user_id)
 
         # Telefon duplicate kontrolü (başka bir kullanıcıda var mı?)
         if data.phone_number and data.phone_number != user.phone_number:
@@ -370,7 +288,7 @@ async def change_password(request: Request) -> HTTPResponse:
     user_id: int = int(request.ctx.user["sub"])
 
     async with get_session() as session:
-        user = await _get_active_user(session, user_id)
+        user = await get_active_user(session, user_id)
 
         # Mevcut şifreyi doğrula
         if not verify_password(data.current_password, user.password):
@@ -449,7 +367,7 @@ async def upload_avatar(request: Request) -> HTTPResponse:
         )
 
     # ── 4. Magic Byte Doğrulaması (MIME Spoofing Önlemi) ────────────────────
-    detected_mime = _detect_mime_from_bytes(file_body)
+    detected_mime = detect_mime(file_body)
     if detected_mime is None:
         raise BadRequest(
             "Dosya formatı tanınamadı. Lütfen geçerli bir görsel dosyası yükleyin."
@@ -475,7 +393,7 @@ async def upload_avatar(request: Request) -> HTTPResponse:
     avatar_url = await _save_avatar(file_body, file_name)
 
     async with get_session() as session:
-        user = await _get_active_user(session, user_id)
+        user = await get_active_user(session, user_id)
 
         # Eski fotoğrafı disk'ten sil (opsiyonel — veri bütünlüğü için)
         if user.profile_photo:
@@ -535,4 +453,46 @@ async def get_user_public_profile(request: Request, user_id: int) -> HTTPRespons
         return sanic_json(
             {"user": _build_public_profile(user)},
             status=200,
+        )
+
+
+# =============================================================================
+# ENDPOINT 5: GET /api/users/search — Kullanıcı Arama
+# =============================================================================
+
+@users_bp.get("/search")
+@protected
+async def search_users(request: Request) -> HTTPResponse:
+    """
+    Kullanıcıları isim, soyisim veya e-posta ile arar.
+    Sosyal ağda arkadaş bulmak için kullanılır.
+    """
+    query = request.args.get("q", "").strip()
+    if len(query) < 2:
+        return sanic_json({"data": [], "message": "Arama terimi en az 2 karakter olmalıdır."}, status=200)
+
+    async with get_session() as session:
+        from sqlalchemy import or_
+        stmt = (
+            select(User)
+            .where(
+                or_(
+                    User.name.ilike(f"%{query}%"),
+                    User.surname.ilike(f"%{query}%"),
+                    User.mail.ilike(f"%{query}%")
+                ),
+                User.is_active.is_(True),
+                User.deleted_at.is_(None)
+            )
+            .limit(20)
+        )
+        users = list(await session.scalars(stmt))
+
+        return sanic_json(
+            {
+                "query": query,
+                "count": len(users),
+                "data": [_build_public_profile(u) for u in users]
+            },
+            status=200
         )

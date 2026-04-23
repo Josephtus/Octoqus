@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../utils/api';
+import { ExpenseCard } from './ExpenseCard';
 
 interface ExpenseListProps {
   groupId: number;
   refreshTrigger: number;
+  currentUserId?: number;
 }
 
 interface Expense {
@@ -12,34 +14,69 @@ interface Expense {
   date: string;
   content?: string;
   bill_photo?: string;
+  added_by?: number;
 }
 
-export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigger }) => {
+export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigger, currentUserId }) => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchExpenses = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await apiFetch(`/expenses/${groupId}`);
-        const data = await response.json();
-        
-        // Backend'in dönüş formatına göre esnek yapı (dizi ya da obje içinde expenses dizisi)
-        const expenseData = Array.isArray(data) ? data : data.expenses || [];
-        setExpenses(expenseData);
-      } catch (err: any) {
-        console.error('Harcamalar yüklenirken hata:', err);
-        setError('Harcamalar yüklenirken bir hata oluştu.');
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Düzenleme state'leri
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [editLoading, setEditLoading] = useState(false);
 
+  const fetchExpenses = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await apiFetch(`/expenses/${groupId}`);
+      const data = await response.json();
+      const expenseData = Array.isArray(data) ? data : data.expenses || [];
+      setExpenses(expenseData);
+    } catch (err: any) {
+      console.error('Harcamalar yüklenirken hata:', err);
+      setError('Harcamalar yüklenirken bir hata oluştu.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchExpenses();
   }, [groupId, refreshTrigger]);
+
+  const handleDelete = async (expenseId: number) => {
+    if (!window.confirm("Bu harcamayı silmek istediğinize emin misiniz?")) return;
+    try {
+      await apiFetch(`/expenses/${groupId}/${expenseId}`, { method: 'DELETE' });
+      fetchExpenses();
+    } catch (err) {
+      alert("Harcama silinemedi");
+    }
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingExpense) return;
+    setEditLoading(true);
+    try {
+      await apiFetch(`/expenses/${groupId}/${editingExpense.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          amount: editingExpense.amount,
+          content: editingExpense.content,
+          date: editingExpense.date
+        })
+      });
+      setEditingExpense(null);
+      fetchExpenses();
+    } catch (err) {
+      alert("Güncelleme başarısız");
+    } finally {
+      setEditLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -70,44 +107,93 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
   }
 
   return (
-    <div className="w-full space-y-4">
-      {expenses.map((expense) => (
-        <div 
-          key={expense.id} 
-          className="flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-slate-800 border border-slate-700 rounded-xl hover:border-slate-600 hover:shadow-lg transition-all"
-        >
-          <div className="flex-1 mb-3 sm:mb-0">
-            <div className="flex items-center gap-3 mb-1">
-              <span className="text-2xl font-bold text-[#00f0ff] tracking-tight">
-                ₺{Number(expense.amount).toFixed(2)}
-              </span>
-              <span className="text-xs font-medium text-slate-400 bg-slate-900 px-2.5 py-1 rounded-full border border-slate-700 shadow-sm">
-                {new Date(expense.date).toLocaleDateString('tr-TR')}
-              </span>
-            </div>
-            
-            {expense.content && (
-              <p className="text-slate-300 text-sm mt-2 leading-relaxed">{expense.content}</p>
-            )}
+    <div className="w-full space-y-6 relative">
+      {/* Borç Optimizasyonu Bilgi Kartı */}
+      <div className="bg-slate-900/40 border border-slate-800/60 p-4 rounded-2xl flex items-center justify-between group hover:border-[#00f0ff]/30 transition-all">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-[#00f0ff]/10 rounded-lg text-[#00f0ff]">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+            </svg>
           </div>
-          
-          {expense.bill_photo && (
-            <div className="flex items-center sm:ml-4 border-t border-slate-700 sm:border-t-0 sm:border-l sm:pl-5 pt-3 sm:pt-0 mt-2 sm:mt-0">
-              <a 
-                href={expense.bill_photo} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-sm font-bold text-[#b026ff] hover:text-[#d382ff] transition-colors group drop-shadow-glow-purple"
-              >
-                <svg className="w-5 h-5 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                Fatura Gör
-              </a>
-            </div>
-          )}
+          <div>
+            <p className="text-sm font-bold text-slate-200">Akıllı Borç Hesaplama Aktif</p>
+            <p className="text-[10px] text-slate-500 font-medium italic">Kimin kime ne kadar ödeyeceğini "Borç Durumu" sekmesinden anlık olarak takip edebilirsiniz.</p>
+          </div>
         </div>
-      ))}
+      </div>
+
+      <div className="space-y-4">
+        {expenses.map((expense) => (
+          <ExpenseCard 
+            key={expense.id} 
+            expense={expense} 
+            currentUserId={currentUserId}
+            onDelete={handleDelete}
+            onEdit={setEditingExpense}
+          />
+        ))}
+      </div>
+
+      {/* Düzenleme Modalı */}
+      {editingExpense && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-scale-in">
+            <div className="p-6 border-b border-slate-800 flex justify-between items-center">
+              <h3 className="text-xl font-bold text-white">Harcamayı Düzenle</h3>
+              <button onClick={() => setEditingExpense(null)} className="text-slate-400 hover:text-white transition-colors">✕</button>
+            </div>
+            <form onSubmit={handleUpdate} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Tutar (₺)</label>
+                <input 
+                  type="number" 
+                  step="0.01"
+                  required
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-[#00f0ff] font-bold focus:border-[#00f0ff] outline-none"
+                  value={editingExpense.amount}
+                  onChange={(e) => setEditingExpense({...editingExpense, amount: Number(e.target.value)})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Açıklama</label>
+                <input 
+                  type="text" 
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 focus:border-[#00f0ff] outline-none"
+                  value={editingExpense.content || ''}
+                  onChange={(e) => setEditingExpense({...editingExpense, content: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Tarih</label>
+                <input 
+                  type="date" 
+                  required
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 focus:border-[#00f0ff] outline-none"
+                  value={editingExpense.date.split('T')[0]}
+                  onChange={(e) => setEditingExpense({...editingExpense, date: e.target.value})}
+                />
+              </div>
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="submit" 
+                  disabled={editLoading}
+                  className="flex-1 bg-[#00f0ff] text-slate-900 font-bold py-3 rounded-xl hover:bg-[#4dffff] transition-all disabled:opacity-50"
+                >
+                  {editLoading ? 'Güncelleniyor...' : 'Güncelle'}
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setEditingExpense(null)}
+                  className="flex-1 bg-slate-800 text-slate-300 font-bold py-3 rounded-xl hover:bg-slate-700 transition-all"
+                >
+                  İptal
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

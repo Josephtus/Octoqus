@@ -11,6 +11,7 @@ Endpoints:
 """
 
 import structlog
+from datetime import date
 from uuid import uuid4
 from pydantic import BaseModel, EmailStr, ValidationError, field_validator
 from sanic import Blueprint, Request
@@ -45,8 +46,9 @@ class RegisterRequest(BaseModel):
     surname: str
     mail: EmailStr
     password: str
-    phone_number: str | None = None
-    age: int | None = None
+    phone_number: str
+    age: int
+    birthday: str
 
     @field_validator("name", "surname")
     @classmethod
@@ -84,6 +86,16 @@ class RegisterRequest(BaseModel):
             raise ValueError("Telefon numarası uluslararası formatta olmalıdır. Örn: +905551234567")
         if len(v) < 10 or len(v) > 16:
             raise ValueError("Telefon numarası 10-16 karakter arasında olmalıdır.")
+        return v
+
+    @field_validator("birthday")
+    @classmethod
+    def validate_birthday(cls, v: str) -> str:
+        v = v.strip()
+        try:
+            date.fromisoformat(v)
+        except ValueError:
+            raise ValueError("Doğum tarihi YYYY-MM-DD formatında olmalıdır. Örn: 2000-01-15")
         return v
 
 
@@ -212,22 +224,21 @@ async def register(request: Request) -> HTTPResponse:
             password=hashed_pw,          # Düz metin ASLA saklanmaz
             phone_number=data.phone_number,
             age=data.age,
+            birthday=date.fromisoformat(data.birthday),
             role=GlobalRole.USER,        # Yeni kayıtlar her zaman USER rolüyle başlar
             is_active=True,
         )
 
+        # Veritabanına ekle
         session.add(new_user)
-        await session.flush()            # DB'den ID al, commit get_session tarafından yapılır
+        await session.flush()  # ID alabilmek için
+        await session.refresh(new_user) # İlişkileri/alanları yükle
 
-        logger.info(
-            "auth.register.success",
-            user_id=new_user.id,
-            mail=new_user.mail,
-        )
+        logger.info("auth.registered", user_id=new_user.id, mail=new_user.mail)
 
         return sanic_json(
             {
-                "message": "Kayıt başarıyla tamamlandı.",
+                "message": "Kayıt başarıyla tamamlandı. Giriş yapabilirsiniz.",
                 "user": _build_user_response(new_user),
             },
             status=201,
@@ -412,12 +423,12 @@ async def reset_password(request: Request) -> HTTPResponse:
     redis_key = f"reset_token:{data.token}"
     
     # Redis'ten user_id al
-    user_id_bytes = await request.app.ctx.redis.get(redis_key)
-    if not user_id_bytes:
+    user_id_str = await request.app.ctx.redis.get(redis_key)
+    if not user_id_str:
         logger.warning("auth.reset_password.invalid_token", token=data.token)
         raise BadRequest("Geçersiz veya süresi dolmuş bir token kullandınız.")
 
-    user_id = int(user_id_bytes.decode("utf-8"))
+    user_id = int(user_id_str)
 
     async with get_session() as session:
         stmt = select(User).where(User.id == user_id, User.deleted_at.is_(None))

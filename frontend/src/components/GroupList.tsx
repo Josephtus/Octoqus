@@ -4,7 +4,9 @@ import { apiFetch } from '../utils/api';
 interface Group {
   id: number;
   name: string;
-  description?: string;
+  content?: string;
+  role?: 'GROUP_LEADER' | 'USER';
+  is_approved?: boolean;
 }
 
 interface JoinStatus {
@@ -14,19 +16,33 @@ interface JoinStatus {
   isError: boolean;
 }
 
-export const GroupList: React.FC = () => {
+interface GroupListProps {
+  onSelectGroup?: (groupId: number, groupName: string, role: string, isApproved: boolean) => void;
+  activeGroupId?: number | null;
+  refreshTrigger?: number;
+}
+
+export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, activeGroupId, refreshTrigger }) => {
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   
   const [joinStatus, setJoinStatus] = useState<JoinStatus | null>(null);
 
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   useEffect(() => {
     const fetchGroups = async () => {
       setLoading(true);
       setError(null);
       try {
-        const response = await apiFetch('/groups');
+        const response = await apiFetch(`/groups?q=${encodeURIComponent(debouncedSearch)}`);
         const data = await response.json();
         
         // Backend dönüş formatına göre (dizi ya da obje içinde groups)
@@ -41,7 +57,7 @@ export const GroupList: React.FC = () => {
     };
 
     fetchGroups();
-  }, []);
+  }, [refreshTrigger]);
 
   const handleJoin = async (groupId: number) => {
     // Aynı anda sadece tek bir gruba işlem durumunu tutuyoruz
@@ -95,10 +111,22 @@ export const GroupList: React.FC = () => {
   }
 
   return (
-    <div className="w-full max-w-6xl mx-auto p-4 sm:p-6 lg:p-8">
-      <h3 className="text-3xl font-extrabold mb-8 text-slate-100 tracking-tight">
-        Grupları Keşfet
-      </h3>
+    <div className="w-full max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 animate-fade-in-up">
+      <div className="flex justify-between items-center mb-8">
+        <h3 className="text-3xl font-extrabold text-slate-100 tracking-tight">
+          Gruplar
+        </h3>
+        <div className="relative w-full max-w-md">
+          <input 
+            type="text" 
+            placeholder="Grup ara..." 
+            className="w-full bg-slate-900 border border-slate-800 rounded-2xl px-6 py-3 text-slate-200 focus:border-[#00f0ff] outline-none shadow-xl transition-all"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500">🔍</span>
+        </div>
+      </div>
       
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {groups.map((group) => {
@@ -107,13 +135,34 @@ export const GroupList: React.FC = () => {
           return (
             <div 
               key={group.id} 
-              className="flex flex-col p-6 bg-slate-900 border border-slate-800 rounded-2xl hover:border-slate-700 hover:shadow-[0_4px_25px_rgba(0,240,255,0.08)] transition-all h-full"
+              className={`flex flex-col p-6 bg-slate-900 border ${activeGroupId === group.id ? 'border-[#00f0ff] shadow-[0_0_15px_rgba(0,240,255,0.2)]' : 'border-slate-800 hover:border-slate-700 hover:shadow-[0_4px_25px_rgba(0,240,255,0.08)]'} rounded-2xl transition-all h-full relative group`}
             >
-              <div className="flex-1">
-                <h4 className="text-2xl font-bold text-[#00f0ff] mb-3 drop-shadow-glow-blue">{group.name}</h4>
-                {group.description ? (
+              <div className="flex-1 cursor-pointer" onClick={() => onSelectGroup && onSelectGroup(group.id, group.name, group.role || 'USER', group.is_approved || false)}>
+                <div className="flex justify-between items-start mb-2">
+                  <h4 className="text-2xl font-bold text-[#00f0ff] drop-shadow-glow-blue">
+                    {group.name}
+                  </h4>
+                  {group.role && (
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-black uppercase tracking-tighter ${group.role === 'GROUP_LEADER' ? 'bg-amber-500/20 text-amber-500' : 'bg-blue-500/20 text-blue-500'}`}>
+                      {group.role === 'GROUP_LEADER' ? 'LİDER' : 'ÜYE'}
+                    </span>
+                  )}
+                </div>
+                
+                <div className="flex gap-2 mb-3">
+                  {activeGroupId === group.id && (
+                    <span className="text-[10px] bg-[#00f0ff]/20 text-[#00f0ff] px-2 py-0.5 rounded-full font-bold">Aktif</span>
+                  )}
+                  {group.role && (
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${group.is_approved ? 'bg-emerald-500/20 text-emerald-500' : 'bg-orange-500/20 text-orange-500'}`}>
+                      {group.is_approved ? 'Onaylı' : 'Onay Bekliyor'}
+                    </span>
+                  )}
+                </div>
+
+                {group.content ? (
                   <p className="text-slate-400 text-sm leading-relaxed mb-4 line-clamp-3">
-                    {group.description}
+                    {group.content}
                   </p>
                 ) : (
                   <p className="text-slate-600 text-sm italic mb-4">Açıklama bulunmuyor.</p>
@@ -121,7 +170,6 @@ export const GroupList: React.FC = () => {
               </div>
               
               <div className="mt-4 pt-5 border-t border-slate-800">
-                {/* İstek durumu mesajı (Başarılı / Hata) */}
                 {status && status.message && (
                   <div 
                     className={`text-sm mb-4 text-center p-2.5 rounded-lg font-medium animate-fade-in-up ${
@@ -134,13 +182,41 @@ export const GroupList: React.FC = () => {
                   </div>
                 )}
                 
-                <button
-                  onClick={() => handleJoin(group.id)}
-                  disabled={status?.loading}
-                  className="w-full py-3 rounded-xl font-bold bg-slate-800 text-[#00f0ff] hover:bg-[#00f0ff] hover:text-slate-900 transition-all border border-[#00f0ff]/30 hover:shadow-[0_0_15px_rgba(0,240,255,0.4)] disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {status?.loading ? 'İstek Gönderiliyor...' : 'Gruba Katıl'}
-                </button>
+                {!group.role ? (
+                  <button
+                    onClick={() => handleJoin(group.id)}
+                    disabled={status?.loading}
+                    className="w-full py-3 rounded-xl font-bold bg-slate-800 text-[#00f0ff] hover:bg-[#00f0ff] hover:text-slate-900 transition-all border border-[#00f0ff]/30 hover:shadow-[0_0_15px_rgba(0,240,255,0.4)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {status?.loading ? 'İstek Gönderiliyor...' : 'Gruba Katıl'}
+                  </button>
+                ) : (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => onSelectGroup && onSelectGroup(group.id, group.name, group.role || 'USER', group.is_approved || false)}
+                      className="flex-1 py-3 rounded-xl font-bold bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/30 hover:bg-[#00f0ff] hover:text-slate-900 transition-all"
+                    >
+                      Gruba Git
+                    </button>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (window.confirm(`${group.name} grubundan ayrılmak istediğinize emin misiniz?`)) {
+                          try {
+                            await apiFetch(`/groups/${group.id}/leave`, { method: 'POST' });
+                            window.location.reload();
+                          } catch (err) {
+                            alert("Ayrılma işlemi başarısız.");
+                          }
+                        }
+                      }}
+                      className="p-3 rounded-xl bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500 hover:text-white transition-all"
+                      title="Gruptan Ayrıl"
+                    >
+                      🚪
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           );

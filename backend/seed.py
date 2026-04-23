@@ -1,4 +1,5 @@
 import asyncio
+from datetime import date, datetime
 import structlog
 from sqlalchemy import select
 
@@ -30,6 +31,9 @@ async def seed_admin():
             surname="Admin",
             mail="admin@admin.com",
             password=hashed_pwd,
+            age=0,
+            birthday=date(1970, 1, 1),
+            phone_number="SYSTEM_ADMIN",
             role=GlobalRole.ADMIN,
             is_active=True
         )

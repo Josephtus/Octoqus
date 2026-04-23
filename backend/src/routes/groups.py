@@ -26,6 +26,7 @@ from sanic import Blueprint, Request
 from sanic.exceptions import BadRequest, Forbidden, NotFound
 from sanic.response import HTTPResponse, json as sanic_json
 from sqlalchemy import asc, select
+from sqlalchemy.orm import selectinload
 
 from src.database import get_session
 from src.models import Group, GroupMember, GroupMemberRole, User, GroupBan
@@ -208,6 +209,11 @@ async def create_group(request: Request) -> HTTPResponse:
         )
         session.add(leader_membership)
 
+        # Commit and refresh to ensure server-side fields (like created_at) are loaded
+        await session.commit()
+        await session.refresh(new_group)
+        await session.refresh(leader_membership)
+
         logger.info(
             "group.created",
             group_id=new_group.id,
@@ -250,27 +256,59 @@ async def list_groups(request: Request) -> HTTPResponse:
         page, limit = 1, 20
 
     offset = (page - 1) * limit
+    user_id: int = int(request.ctx.user["sub"])
+    query = request.args.get("q", "").strip()
 
     async with get_session() as session:
+        # Join with GroupMember to see if the current user is a member
         stmt = (
-            select(Group)
+            select(Group, GroupMember)
+            .outerjoin(
+                GroupMember,
+                (GroupMember.group_id == Group.id) & (GroupMember.user_id == user_id)
+            )
             .where(Group.is_approved.is_(True))
-            .order_by(Group.created_at.desc())
-            .offset(offset)
-            .limit(limit)
         )
-        result = await session.scalars(stmt)
-        groups = result.all()
+        
+        if query:
+            stmt = stmt.where(Group.name.ilike(f"%{query}%"))
+            
+        stmt = stmt.order_by(Group.created_at.desc()).offset(offset).limit(limit)
+        result = await session.execute(stmt)
+        
+        data_list = []
+        for group, membership in result:
+            g_dict = _build_group_response(group)
+            if membership:
+                g_dict["role"] = membership.role.value
+                # Membership status overrides group approval status in this context for the UI
+                g_dict["is_approved"] = membership.is_approved
+            data_list.append(g_dict)
 
         return sanic_json(
             {
                 "page": page,
                 "limit": limit,
-                "count": len(groups),
-                "groups": [_build_group_response(g) for g in groups],
+                "count": len(data_list),
+                "groups": data_list,
             },
             status=200,
         )
+
+
+# =============================================================================
+# ENDPOINT 2.5: GET /api/groups/<group_id> — Grup Detaylarını Getir
+# =============================================================================
+
+@groups_bp.get("/<group_id:int>")
+@protected
+async def get_group_details(request: Request, group_id: int) -> HTTPResponse:
+    """
+    Belirtilen grubun temel bilgilerini (ad, açıklama vb.) döner.
+    """
+    async with get_session() as session:
+        group = await _get_approved_group(session, group_id)
+        return sanic_json(_build_group_response(group), status=200)
 
 
 # =============================================================================
@@ -650,6 +688,68 @@ async def kick_member(request: Request, group_id: int, target_user_id: int) -> H
 
 
 # =============================================================================
+# ENDPOINT 8.5: GET /api/groups/<group_id>/members — Üyeleri Listele
+# =============================================================================
+
+@groups_bp.get("/<group_id:int>/members")
+@protected
+async def list_group_members(request: Request, group_id: int) -> HTTPResponse:
+    """
+    Grubun üyelerini listeler.
+    
+    Erişim Kontrolü:
+      - İstek atan kullanıcı grupta onaylı üye olmalıdır.
+    
+    Veri Kısıtı:
+      - Eğer liderse: Hem onaylı hem de bekleyen (is_approved=False) üyeleri görür.
+      - Eğer üye ise: Sadece onaylı üyeleri görür.
+    """
+    user_id: int = int(request.ctx.user["sub"])
+
+    async with get_session() as session:
+        # Onaylı grup var mı?
+        await _get_approved_group(session, group_id)
+
+        # İstek atan kullanıcının rolünü ve durumunu bul
+        requester_membership = await _get_membership(session, group_id, user_id)
+        if not requester_membership or not requester_membership.is_approved:
+            raise Forbidden("Grup üyelerini görmek için bu grubun onaylı bir üyesi olmalısınız.")
+
+        is_leader = requester_membership.role == GroupMemberRole.GROUP_LEADER
+
+        # Üyeleri (ve kullanıcı bilgilerini) getir
+        stmt = (
+            select(GroupMember)
+            .options(selectinload(GroupMember.user))
+            .where(GroupMember.group_id == group_id)
+        )
+
+        # Lider değilse sadece onaylıları görsün
+        if not is_leader:
+            stmt = stmt.where(GroupMember.is_approved.is_(True))
+
+        stmt = stmt.order_by(GroupMember.joined_at.asc())
+        members = list(await session.scalars(stmt))
+
+        return sanic_json({
+            "group_id": group_id,
+            "count": len(members),
+            "members": [
+                {
+                    "user_id": m.user_id,
+                    "name": m.user.name,
+                    "surname": m.user.surname,
+                    "mail": m.user.mail,
+                    "role": m.role.value,
+                    "is_approved": m.is_approved,
+                    "joined_at": m.joined_at.isoformat() if m.joined_at else None
+                }
+                for m in members
+            ]
+        }, status=200)
+
+
+# =============================================================================
 # ENDPOINT 9: DELETE /api/groups/<group_id>/requests/<target_user_id> — İstek Reddet
 # =============================================================================
 
@@ -727,11 +827,13 @@ async def invite_user(request: Request, group_id: int, target_user_id: int) -> H
             else:
                 raise BadRequest("Bu kullanıcı için zaten bekleyen bir üyelik/istek/davet var.")
 
+        is_leader = requester_membership.role == GroupMemberRole.GROUP_LEADER
+        
         new_membership = GroupMember(
             user_id=target_user_id,
             group_id=group_id,
             role=GroupMemberRole.USER,
-            is_approved=False
+            is_approved=is_leader  # Lider davet ederse direkt onaylı başlar
         )
         session.add(new_membership)
 
@@ -823,7 +925,7 @@ async def unban_user(request: Request, group_id: int, target_user_id: int) -> HT
         ban_record = await session.scalar(stmt_ban)
 
         if not ban_record:
-            raise NotFound("Bu kullanıcı için aktif bir ban bulunamadı.")
+            raise NotFound("Bu kullanıcı için ban kaydı bulunamadı.")
 
         await session.delete(ban_record)
 
@@ -834,4 +936,46 @@ async def unban_user(request: Request, group_id: int, target_user_id: int) -> HT
             by_leader=requester_id
         )
 
-        return sanic_json({"message": f"Kullanıcı (id={target_user_id}) banı kaldırıldı."}, status=200)
+        return sanic_json({"message": "Kullanıcının banı kaldırıldı."}, status=200)
+
+
+# =============================================================================
+# ENDPOINT 13: GET /api/groups/<group_id>/bans — Banlı Kullanıcıları Listele
+# =============================================================================
+
+@groups_bp.get("/<group_id:int>/bans")
+@protected
+async def list_banned_users(request: Request, group_id: int) -> HTTPResponse:
+    """
+    Gruptan banlanan kullanıcıları listeler.
+    Sadece o grubun onaylı lideri yapabilir.
+    """
+    requester_id: int = int(request.ctx.user["sub"])
+
+    async with get_session() as session:
+        await _get_approved_group(session, group_id)
+        await _get_leader_membership(session, group_id, requester_id)
+
+        stmt = (
+            select(GroupBan)
+            .options(selectinload(GroupBan.user))
+            .where(GroupBan.group_id == group_id)
+            .order_by(GroupBan.banned_at.desc())
+        )
+        bans = list(await session.scalars(stmt))
+
+        return sanic_json({
+            "group_id": group_id,
+            "count": len(bans),
+            "bans": [
+                {
+                    "user_id": b.user_id,
+                    "name": b.user.name,
+                    "surname": b.user.surname,
+                    "mail": b.user.mail,
+                    "banned_at": b.banned_at.isoformat()
+                }
+                for b in bans
+            ]
+        }, status=200)
+

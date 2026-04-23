@@ -3,11 +3,14 @@ import { apiFetch } from '../utils/api';
 
 interface UserProfile {
   id: number;
-  email?: string;
+  mail?: string;
   name?: string;
   surname?: string;
   phone_number?: string;
+  age?: number;
+  birthday?: string;
   profile_photo?: string;
+  role?: string;
 }
 
 export const ProfileSettings: React.FC = () => {
@@ -18,8 +21,17 @@ export const ProfileSettings: React.FC = () => {
   const [name, setName] = useState('');
   const [surname, setSurname] = useState('');
   const [phone, setPhone] = useState('');
+  const [age, setAge] = useState('');
+  const [birthday, setBirthday] = useState('');
   const [infoLoading, setInfoLoading] = useState(false);
   const [infoMessage, setInfoMessage] = useState<{ text: string; isError: boolean } | null>(null);
+
+  // Şifre Değiştirme State'i
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwMessage, setPwMessage] = useState<{ text: string; isError: boolean } | null>(null);
 
   // Avatar (Fotoğraf) State'i
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -30,10 +42,13 @@ export const ProfileSettings: React.FC = () => {
     try {
       const response = await apiFetch('/auth/me');
       const data = await response.json();
-      setUser(data);
-      setName(data.name || '');
-      setSurname(data.surname || '');
-      setPhone(data.phone_number || '');
+      const u = data.user;
+      setUser(u);
+      setName(u?.name || '');
+      setSurname(u?.surname || '');
+      setPhone(u?.phone_number || '');
+      setAge(u?.age ? String(u.age) : '');
+      setBirthday(u?.birthday || '');
     } catch (error) {
       console.error('Kullanıcı bilgileri alınırken hata:', error);
     } finally {
@@ -50,16 +65,54 @@ export const ProfileSettings: React.FC = () => {
     setInfoLoading(true);
     setInfoMessage(null);
     try {
+      const payload: Record<string, any> = {};
+      if (name) payload.name = name;
+      if (surname) payload.surname = surname;
+      if (phone) payload.phone_number = phone;
+      if (age) payload.age = parseInt(age, 10);
+      if (birthday) payload.birthday = birthday;
+
       await apiFetch('/users/me', {
         method: 'PUT',
-        body: JSON.stringify({ name, surname, phone_number: phone }),
+        body: JSON.stringify(payload),
       });
       setInfoMessage({ text: 'Profil başarıyla güncellendi.', isError: false });
-      await fetchProfile(); // Verileri tazelemek için
+      await fetchProfile();
     } catch (err: any) {
       setInfoMessage({ text: err.message || 'Profil güncellenirken bir hata oluştu.', isError: true });
     } finally {
       setInfoLoading(false);
+    }
+  };
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwLoading(true);
+    setPwMessage(null);
+
+    if (newPassword !== confirmPassword) {
+      setPwMessage({ text: 'Yeni şifre ile tekrarı eşleşmiyor.', isError: true });
+      setPwLoading(false);
+      return;
+    }
+
+    try {
+      await apiFetch('/users/me/password', {
+        method: 'PUT',
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+          new_password_confirm: confirmPassword,
+        }),
+      });
+      setPwMessage({ text: 'Şifreniz başarıyla güncellendi.', isError: false });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: any) {
+      setPwMessage({ text: err.message || 'Şifre değiştirilirken bir hata oluştu.', isError: true });
+    } finally {
+      setPwLoading(false);
     }
   };
 
@@ -72,16 +125,16 @@ export const ProfileSettings: React.FC = () => {
 
     try {
       const formData = new FormData();
-      formData.append('avatar', avatarFile); // İstek formatına göre key 'avatar'
+      formData.append('avatar', avatarFile);
 
       await apiFetch('/users/me/avatar', {
         method: 'POST',
-        body: formData, // FormData gönderildiği için Content-Type otomatik yönetilecek
+        body: formData,
       });
 
       setAvatarMessage({ text: 'Profil fotoğrafı başarıyla yüklendi.', isError: false });
-      setAvatarFile(null); // Dosya seçimini sıfırla
-      await fetchProfile(); // Yeni fotoğrafı görmek için veriyi tazele
+      setAvatarFile(null);
+      await fetchProfile();
     } catch (err: any) {
       setAvatarMessage({ text: err.message || 'Fotoğraf yüklenirken bir hata oluştu.', isError: true });
     } finally {
@@ -89,10 +142,9 @@ export const ProfileSettings: React.FC = () => {
     }
   };
 
-  // Avatar URL'sini oluşturan yardımcı fonksiyon
   const getAvatarUrl = (path?: string) => {
     if (!path) return null;
-    if (path.startsWith('http')) return path; // Zaten tam URL ise
+    if (path.startsWith('http')) return path;
     const cleanPath = path.startsWith('/') ? path : `/${path}`;
     return `http://localhost:8000${cleanPath}`;
   };
@@ -100,7 +152,7 @@ export const ProfileSettings: React.FC = () => {
   if (loading) {
     return (
       <div className="w-full min-h-screen flex items-center justify-center p-4">
-        <div className="text-[#00f0ff] animate-pulse font-bold text-xl drop-shadow-glow-blue">
+        <div className="text-[#00f0ff] animate-pulse font-bold text-xl">
           Profil Yükleniyor...
         </div>
       </div>
@@ -109,7 +161,7 @@ export const ProfileSettings: React.FC = () => {
 
   return (
     <div className="w-full max-w-5xl mx-auto p-4 sm:p-6 lg:p-8 space-y-8 animate-fade-in-up">
-      <h2 className="text-3xl font-extrabold text-slate-100 tracking-tight drop-shadow-glow-blue border-b border-slate-800 pb-4">
+      <h2 className="text-3xl font-extrabold text-slate-100 tracking-tight border-b border-slate-800 pb-4">
         Profil Ayarları
       </h2>
 
@@ -159,77 +211,161 @@ export const ProfileSettings: React.FC = () => {
         </div>
 
         {/* SAĞ KOLON: Profil Bilgileri Formu */}
-        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl">
-          <h3 className="text-2xl font-bold text-[#00f0ff] mb-8">Kişisel Bilgiler</h3>
-          
-          {infoMessage && (
-            <div className={`mb-6 p-4 rounded-xl text-sm font-bold ${infoMessage.isError ? 'bg-red-900/30 text-red-400 border border-red-800' : 'bg-emerald-900/30 text-emerald-400 border border-emerald-800'}`}>
-              {infoMessage.text}
-            </div>
-          )}
-
-          <form onSubmit={handleInfoSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* İsim */}
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-slate-400">Adınız</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all shadow-inner"
-                  placeholder="Ahmet"
-                />
-              </div>
-
-              {/* Soyisim */}
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-slate-400">Soyadınız</label>
-                <input
-                  type="text"
-                  value={surname}
-                  onChange={(e) => setSurname(e.target.value)}
-                  className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all shadow-inner"
-                  placeholder="Yılmaz"
-                />
-              </div>
-            </div>
-
-            {/* Telefon */}
-            <div className="space-y-2">
-              <label className="block text-sm font-semibold text-slate-400">Telefon Numarası</label>
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all shadow-inner"
-                placeholder="05XX XXX XX XX"
-              />
-            </div>
-
-            {/* Email (Sadece Okunabilir - Genelde auth bilgilerinde değiştirilmez veya farklı endpointtendir) */}
-            {user?.email && (
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-slate-500">Email Adresi (Değiştirilemez)</label>
-                <input
-                  type="email"
-                  value={user.email}
-                  disabled
-                  className="w-full p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-500 cursor-not-allowed opacity-70"
-                />
+        <div className="lg:col-span-2 space-y-8">
+          {/* Kişisel Bilgiler */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl">
+            <h3 className="text-2xl font-bold text-[#00f0ff] mb-8">Kişisel Bilgiler</h3>
+            
+            {infoMessage && (
+              <div className={`mb-6 p-4 rounded-xl text-sm font-bold ${infoMessage.isError ? 'bg-red-900/30 text-red-400 border border-red-800' : 'bg-emerald-900/30 text-emerald-400 border border-emerald-800'}`}>
+                {infoMessage.text}
               </div>
             )}
 
-            <div className="pt-6 border-t border-slate-800 flex justify-end">
-              <button
-                type="submit"
-                disabled={infoLoading}
-                className="px-8 py-3.5 rounded-xl font-bold bg-[#00f0ff] text-slate-900 hover:bg-[#00c0cc] hover:shadow-[0_0_20px_rgba(0,240,255,0.4)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {infoLoading ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
-              </button>
-            </div>
-          </form>
+            <form onSubmit={handleInfoSubmit} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-slate-400">Adınız</label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all shadow-inner"
+                    placeholder="Ahmet"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-slate-400">Soyadınız</label>
+                  <input
+                    type="text"
+                    value={surname}
+                    onChange={(e) => setSurname(e.target.value)}
+                    className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all shadow-inner"
+                    placeholder="Yılmaz"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-slate-400">Yaş</label>
+                  <input
+                    type="number"
+                    min="13"
+                    max="120"
+                    value={age}
+                    onChange={(e) => setAge(e.target.value)}
+                    className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all shadow-inner"
+                    placeholder="25"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-slate-400">Doğum Tarihi</label>
+                  <input
+                    type="date"
+                    value={birthday}
+                    onChange={(e) => setBirthday(e.target.value)}
+                    className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all shadow-inner"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-slate-400">Telefon Numarası</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all shadow-inner"
+                  placeholder="+905551234567"
+                />
+                <p className="text-xs text-slate-600">Uluslararası format: +90XXXXXXXXXX</p>
+              </div>
+
+              {/* Email (Sadece Okunabilir) */}
+              {user?.mail && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-slate-500">Email Adresi (Değiştirilemez)</label>
+                  <input
+                    type="email"
+                    value={user.mail}
+                    disabled
+                    className="w-full p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-500 cursor-not-allowed opacity-70"
+                  />
+                </div>
+              )}
+
+              <div className="pt-6 border-t border-slate-800 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={infoLoading}
+                  className="px-8 py-3.5 rounded-xl font-bold bg-[#00f0ff] text-slate-900 hover:bg-[#00c0cc] hover:shadow-[0_0_20px_rgba(0,240,255,0.4)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {infoLoading ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Şifre Değiştirme */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl">
+            <h3 className="text-2xl font-bold text-[#b026ff] mb-8">Şifre Değiştir</h3>
+
+            {pwMessage && (
+              <div className={`mb-6 p-4 rounded-xl text-sm font-bold ${pwMessage.isError ? 'bg-red-900/30 text-red-400 border border-red-800' : 'bg-emerald-900/30 text-emerald-400 border border-emerald-800'}`}>
+                {pwMessage.text}
+              </div>
+            )}
+
+            <form onSubmit={handlePasswordSubmit} className="space-y-6">
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-slate-400">Mevcut Şifre</label>
+                <input
+                  type="password"
+                  required
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#b026ff] focus:ring-1 focus:ring-[#b026ff] transition-all shadow-inner"
+                  placeholder="••••••••"
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-slate-400">Yeni Şifre</label>
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#b026ff] focus:ring-1 focus:ring-[#b026ff] transition-all shadow-inner"
+                    placeholder="En az 8 karakter"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-semibold text-slate-400">Yeni Şifre (Tekrar)</label>
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full p-3.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#b026ff] focus:ring-1 focus:ring-[#b026ff] transition-all shadow-inner"
+                    placeholder="Tekrar girin"
+                  />
+                </div>
+              </div>
+              <div className="pt-6 border-t border-slate-800 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={pwLoading || !currentPassword || !newPassword || !confirmPassword}
+                  className="px-8 py-3.5 rounded-xl font-bold bg-[#b026ff] text-white hover:bg-[#c455ff] hover:shadow-[0_0_20px_rgba(176,38,255,0.4)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {pwLoading ? 'Güncelleniyor...' : 'Şifreyi Güncelle'}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
     </div>

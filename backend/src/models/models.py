@@ -44,15 +44,15 @@ from src.database import Base
 
 class GlobalRole(str, enum.Enum):
     """Sistemdeki genel kullanıcı rolü."""
-    USER         = "user"
-    GROUP_LEADER = "group_leader"
-    ADMIN        = "admin"
+    USER         = "USER"
+    GROUP_LEADER = "GROUP_LEADER"
+    ADMIN        = "ADMIN"
 
 
 class GroupMemberRole(str, enum.Enum):
     """Bir grup içindeki üye rolü."""
-    USER         = "user"
-    GROUP_LEADER = "group_leader"
+    USER         = "USER"
+    GROUP_LEADER = "GROUP_LEADER"
 
 
 class ReportStatus(str, enum.Enum):
@@ -119,10 +119,10 @@ class User(Base):
     # Kişisel bilgiler
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     surname: Mapped[str] = mapped_column(String(100), nullable=False)
-    age: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True)
-    birthday: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    phone_number: Mapped[Optional[str]] = mapped_column(
-        String(20), unique=True, nullable=True, comment="Uluslararası formatta: +905xxxxxxxxx"
+    age: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    birthday: Mapped[date] = mapped_column(Date, nullable=False)
+    phone_number: Mapped[str] = mapped_column(
+        String(20), unique=True, nullable=False, comment="Uluslararası formatta: +905xxxxxxxxx"
     )
 
     # Kimlik doğrulama
@@ -225,10 +225,10 @@ class Group(Base):
         "GroupMember", back_populates="group", cascade="all, delete-orphan"
     )
     expenses: Mapped[List["Expense"]] = relationship(
-        "Expense", back_populates="group"
+        "Expense", back_populates="group", cascade="all, delete-orphan"
     )
     messages: Mapped[List["Message"]] = relationship(
-        "Message", back_populates="group"
+        "Message", back_populates="group", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

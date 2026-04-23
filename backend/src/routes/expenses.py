@@ -32,7 +32,9 @@ logger = structlog.get_logger(__name__)
 
 expenses_bp = Blueprint("expenses", url_prefix="/api/expenses")
 
-# ── Dosya yükleme sabitleri (users.py ile aynı mantık) ────────────────────
+from src.services.common import detect_mime
+
+# ── Dosya yükleme sabitleri ────────────────────
 RECEIPT_UPLOAD_DIR = Path("./uploads/receipts")
 MAX_RECEIPT_SIZE   = 10 * 1024 * 1024  # 10 MB
 
@@ -40,19 +42,6 @@ ALLOWED_MIME_TYPES = frozenset({"image/jpeg", "image/png", "image/gif", "image/w
 EXTENSION_TO_MIME  = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
                       ".png": "image/png",  ".gif": "image/gif",
                       ".webp": "image/webp"}
-
-MAGIC_SIGNATURES = [
-    (b"\xff\xd8\xff",        "image/jpeg"),
-    (b"\x89PNG\r\n\x1a\n",  "image/png"),
-    (b"GIF87a",             "image/gif"),
-    (b"GIF89a",             "image/gif"),
-    (b"RIFF",               "image/webp"),
-]
-
-
-# =============================================================================
-# Pydantic Şemaları
-# =============================================================================
 
 class UpdateExpenseRequest(BaseModel):
     """Kendi harcamasını güncelleme isteği (partial update)."""
@@ -83,19 +72,6 @@ class UpdateExpenseRequest(BaseModel):
             except ValueError:
                 raise ValueError("Tarih YYYY-MM-DD formatında olmalıdır.")
         return v
-
-
-# =============================================================================
-# Helpers
-# =============================================================================
-
-def _detect_mime(data: bytes) -> str | None:
-    for sig, mime in MAGIC_SIGNATURES:
-        if data[:len(sig)] == sig:
-            if mime == "image/webp":
-                return mime if len(data) >= 12 and data[8:12] == b"WEBP" else None
-            return mime
-    return None
 
 
 async def _save_receipt(body: bytes, original_name: str) -> str:
@@ -219,7 +195,7 @@ async def add_expense(request: Request, group_id: int) -> HTTPResponse:
             if ext not in EXTENSION_TO_MIME:
                 raise BadRequest(f"Geçersiz uzantı: {ext}")
 
-            mime = _detect_mime(body)
+            mime = detect_mime(body)
             if not mime or mime not in ALLOWED_MIME_TYPES:
                 raise BadRequest("Geçersiz dosya formatı. JPEG, PNG, GIF veya WebP gönderin.")
 
@@ -236,7 +212,8 @@ async def add_expense(request: Request, group_id: int) -> HTTPResponse:
             is_deleted = False,
         )
         session.add(expense)
-        await session.flush()
+        await session.commit()
+        await session.refresh(expense)
 
         logger.info("expense.added", expense_id=expense.id, group_id=group_id, user_id=user_id)
 

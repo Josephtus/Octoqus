@@ -31,17 +31,9 @@ social_bp = Blueprint("social", url_prefix="/api/social")
 # Helpers
 # =============================================================================
 
-async def _get_active_user(session, user_id: int) -> User:
-    """Belirtilen aktif ve silinmemiş kullanıcıyı getirir."""
-    stmt = select(User).where(
-        User.id == user_id,
-        User.is_active.is_(True),
-        User.deleted_at.is_(None)
-    )
-    user = await session.scalar(stmt)
-    if not user:
-        raise NotFound(f"Kullanıcı bulunamadı (id={user_id}).")
-    return user
+from src.services.common import get_active_user
+
+# (Removed local _get_active_user, using src.services.common.get_active_user)
 
 
 def _build_public_user(user: User) -> dict:
@@ -71,7 +63,7 @@ async def follow_user(request: Request, target_user_id: int) -> HTTPResponse:
 
     async with get_session() as session:
         # Hedef kullanıcı var mı ve aktif mi?
-        await _get_active_user(session, target_user_id)
+        await get_active_user(session, target_user_id)
 
         # Takip ilişkisini ekle
         stmt = insert(follower_table).values(
@@ -147,7 +139,7 @@ async def list_followers(request: Request, user_id: int) -> HTTPResponse:
     offset = (page - 1) * limit
 
     async with get_session() as session:
-        await _get_active_user(session, user_id)
+        await get_active_user(session, user_id)
 
         # Sorgu: follower_table ile User tablosunu joinleyip "follower_id" leri çeker
         stmt = (
@@ -195,7 +187,7 @@ async def list_following(request: Request, user_id: int) -> HTTPResponse:
     offset = (page - 1) * limit
 
     async with get_session() as session:
-        await _get_active_user(session, user_id)
+        await get_active_user(session, user_id)
 
         # Sorgu: follower_table ile User tablosunu joinleyip "following_id" leri çeker
         stmt = (

@@ -41,14 +41,15 @@ from src.models import (
     ReportStatus,
     User,
 )
+from src.services.common import get_active_user, detect_mime
 from src.routes.expenses import (
     ALLOWED_MIME_TYPES,
     EXTENSION_TO_MIME,
     MAX_RECEIPT_SIZE,
-    _detect_mime,
     _save_receipt,
 )
 from src.services.security import protected, role_required
+from src.services.schemas import BaseUserUpdateSchema
 
 logger = structlog.get_logger(__name__)
 
@@ -59,52 +60,6 @@ admin_bp = Blueprint("admin", url_prefix="/api/admin")
 # Pydantic Şemaları
 # =============================================================================
 
-class AdminUpdateUserRequest(BaseModel):
-    name: str | None = None
-    surname: str | None = None
-    age: int | None = None
-    phone_number: str | None = None
-    birthday: str | None = None
-
-    @field_validator("name", "surname")
-    @classmethod
-    def strip_and_check_empty(cls, v: str | None) -> str | None:
-        if v is not None:
-            v = v.strip()
-            if not v:
-                raise ValueError("Bu alan boş olamaz.")
-            if len(v) > 100:
-                raise ValueError("Bu alan en fazla 100 karakter olabilir.")
-        return v
-
-    @field_validator("age")
-    @classmethod
-    def validate_age(cls, v: int | None) -> int | None:
-        if v is not None and (v < 13 or v > 120):
-            raise ValueError("Yaş 13 ile 120 arasında olmalıdır.")
-        return v
-
-    @field_validator("phone_number")
-    @classmethod
-    def validate_phone(cls, v: str | None) -> str | None:
-        if v is None:
-            return v
-        v = v.strip()
-        if not v.startswith("+") or not v[1:].isdigit():
-            raise ValueError("Telefon numarası uluslararası formatta olmalıdır. Örn: +905551234567")
-        if len(v) < 10 or len(v) > 16:
-            raise ValueError("Telefon numarası 10-16 karakter arasında olmalıdır.")
-        return v
-
-    @field_validator("birthday")
-    @classmethod
-    def validate_birthday(cls, v: str | None) -> str | None:
-        if v is not None:
-            try:
-                date.fromisoformat(v)
-            except ValueError:
-                raise ValueError("Doğum tarihi YYYY-MM-DD formatında olmalıdır.")
-        return v
 
 
 # =============================================================================
@@ -140,38 +95,19 @@ def _build_report_response(report: Report) -> dict:
         "created_at": report.created_at.isoformat() if report.created_at else None,
     }
     
-    # Eager load edilmişse ekle
-    try:
-        if report.reported_message:
-            msg = report.reported_message
-            resp["reported_message"] = {
-                "id": msg.id,
-                "content": msg.content,
-                "is_deleted": msg.is_deleted,
-            }
-            try:
-                if msg.sender:
-                    resp["reported_message"]["sender"] = {
-                        "id": msg.sender.id,
-                        "name": msg.sender.name,
-                        "surname": msg.sender.surname
-                    }
-            except Exception:
-                pass
-    except Exception:
-        pass
+    # Şikayet eden bilgisi
+    if report.reporter:
+        resp["reporter_name"] = f"{report.reporter.name} {report.reporter.surname}"
 
-    try:
-        if report.reported_user:
-            usr = report.reported_user
-            resp["reported_user"] = {
-                "id": usr.id,
-                "name": usr.name,
-                "surname": usr.surname,
-                "mail": usr.mail
-            }
-    except Exception:
-        pass
+    # Şikayet edilen mesaj bilgisi
+    if report.reported_message:
+        resp["message_content"] = report.reported_message.message_text
+        if report.reported_message.sender:
+            resp["reported_name"] = f"{report.reported_message.sender.name} {report.reported_message.sender.surname}"
+    
+    # Şikayet edilen kullanıcı bilgisi (eğer direkt kullanıcı şikayet edildiyse)
+    elif report.reported_user:
+        resp["reported_name"] = f"{report.reported_user.name} {report.reported_user.surname}"
 
     return resp
 
@@ -187,7 +123,36 @@ def _build_audit_log_response(log: AuditLog) -> dict:
 
 
 # =============================================================================
-# ENDPOINT 1: PUT /api/admin/users/<user_id>/status — Engelle/Kaldır
+# ENDPOINT 1: GET /api/admin/users — Tüm Kullanıcıları Listele
+# =============================================================================
+
+@admin_bp.get("/users")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def list_users(request: Request) -> HTTPResponse:
+    """Sistemdeki tüm kullanıcıları (silinmemiş olanlar) listeler."""
+    async with get_session() as session:
+        stmt = select(User).where(User.deleted_at.is_(None)).order_by(User.id.desc())
+        users = list(await session.scalars(stmt))
+        
+        data = []
+        for u in users:
+            data.append({
+                "id": u.id,
+                "name": u.name,
+                "surname": u.surname,
+                "mail": u.mail,
+                "phone_number": u.phone_number,
+                "role": u.role.value,
+                "is_active": u.is_active,
+                "created_at": u.created_at.isoformat() if u.created_at else None
+            })
+            
+        return sanic_json({"users": data}, status=200)
+
+
+# =============================================================================
+# ENDPOINT 1.5: PUT /api/admin/users/<user_id>/status — Engelle/Kaldır
 # =============================================================================
 
 @admin_bp.put("/users/<user_id:int>/status")
@@ -243,7 +208,7 @@ async def toggle_user_status(request: Request, user_id: int) -> HTTPResponse:
 # ENDPOINT 2: PUT /api/admin/groups/<group_id>/approve — Grup Onayla
 # =============================================================================
 
-@admin_bp.put("/groups/<group_id:int>/approve")
+@admin_bp.post("/groups/<group_id:int>/approve")
 @protected
 @role_required(GlobalRole.ADMIN)
 async def approve_group(request: Request, group_id: int) -> HTTPResponse:
@@ -265,6 +230,16 @@ async def approve_group(request: Request, group_id: int) -> HTTPResponse:
 
         group.is_approved = True
 
+        # Gruptaki lider(ler)in üyeliğini de onaylı duruma getir (zaten öyle olmalı ama garantiye alalım)
+        from src.models import GroupMember, GroupMemberRole
+        stmt_leader = select(GroupMember).where(
+            GroupMember.group_id == group_id,
+            GroupMember.role == GroupMemberRole.GROUP_LEADER
+        )
+        leaders = await session.scalars(stmt_leader)
+        for leader in leaders:
+            leader.is_approved = True
+
         # Audit Log
         await _create_audit_log(
             session,
@@ -279,6 +254,40 @@ async def approve_group(request: Request, group_id: int) -> HTTPResponse:
             {"message": f"Grup (id={group_id}) başarıyla onaylandı."},
             status=200,
         )
+
+
+# =============================================================================
+# ENDPOINT 2.5: GET /api/admin/groups — Tüm Grupları Listele
+# =============================================================================
+
+@admin_bp.get("/groups")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def list_groups(request: Request) -> HTTPResponse:
+    """Sistemdeki tüm grupları (onaylı ve onay bekleyen) listeler."""
+    async with get_session() as session:
+        from sqlalchemy import func
+        # Grup ve üye sayısını birlikte çek
+        stmt = (
+            select(Group, func.count(GroupMember.id).label("member_count"))
+            .outerjoin(GroupMember, GroupMember.group_id == Group.id)
+            .group_by(Group.id)
+            .order_by(Group.created_at.desc())
+        )
+        results = await session.execute(stmt)
+        
+        data = []
+        for group, member_count in results:
+            data.append({
+                "id": group.id,
+                "name": group.name,
+                "content": group.content,
+                "is_approved": group.is_approved,
+                "created_at": group.created_at.isoformat() if group.created_at else None,
+                "member_count": member_count
+            })
+            
+        return sanic_json({"groups": data}, status=200)
 
 
 # =============================================================================
@@ -406,6 +415,7 @@ async def list_reports(request: Request) -> HTTPResponse:
         stmt = (
             select(Report)
             .options(
+                selectinload(Report.reporter),
                 selectinload(Report.reported_message).selectinload(Message.sender),
                 selectinload(Report.reported_user)
             )
@@ -426,10 +436,48 @@ async def list_reports(request: Request) -> HTTPResponse:
                 "page": page,
                 "limit": limit,
                 "count": len(reports),
-                "data": [_build_report_response(r) for r in reports],
+                "reports": [_build_report_response(r) for r in reports],
             },
             status=200,
         )
+
+
+# =============================================================================
+# ENDPOINT 5.5: PUT /api/admin/reports/<report_id>/status — Şikayet Durumu Güncelle
+# =============================================================================
+
+@admin_bp.put("/reports/<report_id:int>/status")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def update_report_status(request: Request, report_id: int) -> HTTPResponse:
+    """Şikayeti çözüldü (resolved), reddedildi (dismissed) veya incelendi (reviewed) olarak işaretler."""
+    admin_id: int = int(request.ctx.user["sub"])
+    body = request.json or {}
+    new_status = body.get("status")
+
+    if new_status not in [s.value for s in ReportStatus]:
+        raise BadRequest(f"Geçersiz durum. Geçerli durumlar: {', '.join([s.value for s in ReportStatus])}")
+
+    async with get_session() as session:
+        stmt = select(Report).where(Report.id == report_id)
+        report = await session.scalar(stmt)
+
+        if not report:
+            raise NotFound("Şikayet bulunamadı.")
+
+        report.status = ReportStatus(new_status)
+        
+        # Audit Log
+        await _create_audit_log(
+            session,
+            admin_id=admin_id,
+            process="REPORT_STATUS_UPDATE",
+            content={"report_id": report_id, "new_status": new_status}
+        )
+
+        logger.info("admin.report_updated", admin_id=admin_id, report_id=report_id, status=new_status)
+
+        return sanic_json({"message": f"Şikayet durumu '{new_status}' olarak güncellendi."}, status=200)
 
 
 # =============================================================================
@@ -466,10 +514,12 @@ async def list_audit_logs(request: Request) -> HTTPResponse:
                 "page": page,
                 "limit": limit,
                 "count": len(logs),
-                "data": [_build_audit_log_response(log) for log in logs],
+                "logs": [_build_audit_log_response(log) for log in logs],
             },
             status=200,
         )
+
+
 
 
 # =============================================================================
@@ -550,7 +600,7 @@ async def add_expense_on_behalf(
             if ext not in EXTENSION_TO_MIME:
                 raise BadRequest(f"Geçersiz uzantı: {ext}")
 
-            mime = _detect_mime(body)
+            mime = detect_mime(body)
             if not mime or mime not in ALLOWED_MIME_TYPES:
                 raise BadRequest("Geçersiz dosya formatı. JPEG, PNG, GIF veya WebP gönderin.")
 
@@ -709,14 +759,10 @@ async def admin_update_user(request: Request, user_id: int) -> HTTPResponse:
     admin_id: int = int(request.ctx.user["sub"])
     body = request.json or {}
 
-    if not body:
-        raise BadRequest("Güncellenecek alanlar (JSON formatında) gereklidir.")
-
     try:
-        data = AdminUpdateUserRequest.model_validate(body)
+        data = BaseUserUpdateSchema.model_validate(body)
     except ValidationError as exc:
-        errors = [{"field": e["loc"][0] if e["loc"] else "unknown", "message": e["msg"]} for e in exc.errors()]
-        raise BadRequest(f"Validasyon hatası: {errors}")
+        raise BadRequest(f"Validasyon hatası: {exc.errors()}")
 
     async with get_session() as session:
         stmt = select(User).where(User.id == user_id, User.deleted_at.is_(None))
@@ -931,7 +977,7 @@ async def admin_get_group_messages(request: Request, group_id: int) -> HTTPRespo
             select(Message)
             .where(Message.group_id == group_id, Message.is_deleted.is_(False))
             .options(selectinload(Message.sender))
-            .order_by(Message.created_at.desc())
+            .order_by(Message.timestamp.desc())
             .offset(offset)
             .limit(limit)
         )
@@ -941,8 +987,8 @@ async def admin_get_group_messages(request: Request, group_id: int) -> HTTPRespo
         for msg in messages:
             item = {
                 "id": msg.id,
-                "content": msg.content,
-                "created_at": msg.created_at.isoformat() if msg.created_at else None,
+                "content": msg.message_text,
+                "created_at": msg.timestamp.isoformat() if msg.timestamp else None,
             }
             if msg.sender:
                 item["sender"] = {
@@ -1008,3 +1054,93 @@ async def admin_get_group_expenses(request: Request, group_id: int) -> HTTPRespo
             },
             status=200
         )
+# =============================================================================
+# ENDPOINT 14: POST /api/admin/groups — Admin Doğrudan Grup Oluşturma
+# =============================================================================
+
+@admin_bp.post("/groups")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def admin_create_group(request: Request) -> HTTPResponse:
+    """Admin tarafından doğrudan onaylı grup oluşturur."""
+    admin_id: int = int(request.ctx.user["sub"])
+    body = request.json
+    if not body or "name" not in body:
+        raise BadRequest("Grup ismi zorunludur.")
+
+    async with get_session() as session:
+        new_group = Group(
+            name=body["name"],
+            content=body.get("content"),
+            is_approved=True # Admin oluşturduğu için direkt onaylı
+        )
+        session.add(new_group)
+        await session.flush()
+
+        # Admini de gruba leader olarak ekleyelim (isteğe bağlı ama takip için iyi)
+        from src.models import GroupMember, GroupMemberRole
+        leader_membership = GroupMember(
+            user_id=admin_id,
+            group_id=new_group.id,
+            role=GroupMemberRole.GROUP_LEADER,
+            is_approved=True
+        )
+        session.add(leader_membership)
+        
+        await session.commit()
+        await session.refresh(new_group)
+
+        # Audit Log
+        await _create_audit_log(
+            session,
+            admin_id=admin_id,
+            process="ADMIN_GROUP_CREATE",
+            content={"group_id": new_group.id, "name": new_group.name}
+        )
+
+        return sanic_json({
+            "message": "Grup admin tarafından oluşturuldu.",
+            "group": {
+                "id": new_group.id,
+                "name": new_group.name,
+                "is_approved": True
+            }
+        }, status=201)
+
+
+# =============================================================================
+# ENDPOINT 16: GET /api/admin/groups/<group_id>/members — Grup Üyelerini Listele
+# =============================================================================
+
+@admin_bp.get("/groups/<group_id:int>/members")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def admin_get_group_members(request: Request, group_id: int) -> HTTPResponse:
+    """Grubun tüm üyelerini listeler."""
+    async with get_session() as session:
+        stmt = (
+            select(GroupMember)
+            .where(GroupMember.group_id == group_id)
+            .options(selectinload(GroupMember.user))
+            .order_by(GroupMember.role.desc(), GroupMember.joined_at.asc())
+        )
+        memberships = list(await session.scalars(stmt))
+
+        data = []
+        for m in memberships:
+            item = {
+                "id": m.id,
+                "user_id": m.user_id,
+                "role": m.role.value,
+                "is_approved": m.is_approved,
+                "joined_at": m.joined_at.isoformat() if m.joined_at else None,
+            }
+            if m.user:
+                item["user"] = {
+                    "name": m.user.name,
+                    "surname": m.user.surname,
+                    "mail": m.user.mail
+                }
+            data.append(item)
+
+        return sanic_json({"members": data}, status=200)

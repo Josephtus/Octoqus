@@ -168,10 +168,10 @@ async def rate_limit_middleware(request: Request) -> None:
     """
     Her gelen isteği Redis'te sayar.
     Limit aşılırsa HTTP 429 döner.
-    /health endpoint'i rate limit'ten muaf tutulur.
+    /health endpoint'i ve OPTIONS istekleri rate limit'ten muaf tutulur.
     """
-    # Health check'i muaf tut (Docker healthcheck döngüye girmesin)
-    if request.path == "/health":
+    # Health check ve CORS preflight (OPTIONS) isteklerini muaf tut
+    if request.path == "/health" or request.method == "OPTIONS":
         return
 
     # İstemci IP'sini al (Docker reverse proxy arkasındaysa X-Forwarded-For)
@@ -184,19 +184,23 @@ async def rate_limit_middleware(request: Request) -> None:
     redis_client = request.app.ctx.redis
     rate_key = f"rate_limit:{client_ip}"
 
+    # .env'den gelen limit, yoksa varsayılan 300 (dev dostu)
+    limit = int(os.getenv("RATE_LIMIT_PER_MINUTE", "300"))
+
     try:
         # Atomik INCR + EXPIRE (ilk istek ise window başlat)
         current_count = await redis_client.incr(rate_key)
         if current_count == 1:
             await redis_client.expire(rate_key, RATE_WINDOW_SECONDS)
 
-        if current_count > RATE_LIMIT_PER_MINUTE:
+        if current_count > limit:
             # Retry-After başlığı: kaç saniye beklemesi gerektiği
             ttl = await redis_client.ttl(rate_key)
             return sanic_json(
                 {
                     "error": "Rate limit exceeded",
-                    "retry_after": ttl
+                    "retry_after": ttl,
+                    "message": "Çok fazla istek gönderdiniz. Lütfen biraz bekleyin."
                 },
                 status=429,
                 headers={
@@ -225,10 +229,14 @@ async def log_request(request: Request) -> None:
 
 @app.middleware("response")
 async def handle_cors_and_log_response(request: Request, response: HTTPResponse) -> HTTPResponse:
-    """Giden her HTTP yanıtını loglar ve eksik CORS başlıklarını tamamlar."""
-    if "Access-Control-Allow-Headers" not in response.headers:
-        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept, Origin"
-    
+    """Giden her HTTP yanıtına CORS başlıklarını ekler ve loglar."""
+    # CORS Başlıklarını zorla ekle
+    origin = request.headers.get("Origin", "*")
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept, Origin, X-Requested-With"
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+
     logger.info(
         "http.response",
         method=request.method,

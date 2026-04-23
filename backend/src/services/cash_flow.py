@@ -40,18 +40,28 @@ async def calculate_optimized_debts(
     Returns:
         [{"from_user_id": int, "to_user_id": int, "amount": float}, ...]
     """
-    # ── 1. Onaylı üyeler ───────────────────────────────────────────────────
-    members = list(await session.scalars(
-        select(GroupMember).where(
+    from sqlalchemy.orm import joinedload
+    from src.models import User
+
+    # ── 1. Onaylı üyeler (User bilgileriyle birlikte) ──────────────────────
+    stmt = (
+        select(GroupMember)
+        .options(joinedload(GroupMember.user))
+        .where(
             GroupMember.group_id == group_id,
             GroupMember.is_approved.is_(True),
         )
-    ))
+    )
+    members = list(await session.scalars(stmt))
 
     if len(members) < 2:
         return []
 
-    member_ids = [m.user_id for m in members]
+    # Kullanıcı ID -> İsim eşlemesi
+    user_names: dict[int, str] = {
+        m.user_id: f"{m.user.name} {m.user.surname}" for m in members
+    }
+    member_ids = list(user_names.keys())
 
     # ── 2. Aktif harcamalar ────────────────────────────────────────────────
     expenses = list(await session.scalars(
@@ -108,7 +118,9 @@ async def calculate_optimized_debts(
         payment = min(credit, debt).quantize(_TWO_PLACES, rounding=ROUND_HALF_UP)
         transactions.append({
             "from_user_id": debt_id,
+            "from_user_name": user_names.get(debt_id, f"User {debt_id}"),
             "to_user_id":   cred_id,
+            "to_user_name":   user_names.get(cred_id, f"User {cred_id}"),
             "amount":       float(payment),
         })
 

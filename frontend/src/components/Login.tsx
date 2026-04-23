@@ -3,9 +3,11 @@ import { apiFetch } from '../utils/api';
 
 interface LoginProps {
   onLoginSuccess: () => void;
+  onSwitchToRegister: () => void;
+  onSwitchToForgotPassword: () => void;
 }
 
-export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
+export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onSwitchToRegister, onSwitchToForgotPassword }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -27,7 +29,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       
     } catch (err: any) {
       console.error("Login hatası:", err);
-      setError("Giriş sırasında bir hata oluştu.");
+      setError(err.message || "Giriş sırasında bir hata oluştu.");
     } finally {
       setLoading(false);
     }
@@ -64,6 +66,15 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
             />
+            <div className="flex justify-end mt-1">
+              <button 
+                type="button"
+                onClick={onSwitchToForgotPassword}
+                className="text-xs text-slate-500 hover:text-[#00f0ff] transition-colors"
+              >
+                Şifremi Unuttum
+              </button>
+            </div>
           </div>
           <button 
             type="submit" 
@@ -73,6 +84,16 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             {loading ? "Giriş Yapılıyor..." : "Giriş Yap"}
           </button>
         </form>
+        <div className="mt-6 text-center text-sm text-slate-400">
+          Hesabın yok mu?{' '}
+          <button 
+            type="button"
+            onClick={onSwitchToRegister}
+            className="text-[#00f0ff] font-bold hover:underline hover:text-[#4dffff] transition-colors"
+          >
+            Kayıt Ol
+          </button>
+        </div>
       </div>
     </div>
   );
