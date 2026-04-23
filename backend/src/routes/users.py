@@ -21,7 +21,7 @@ import aiofiles
 import structlog
 from pydantic import BaseModel, ValidationError, field_validator
 from sanic import Blueprint, Request
-from sanic.exceptions import BadRequest, NotFound, UnsupportedMediaType
+from sanic.exceptions import BadRequest, NotFound
 from sanic.response import HTTPResponse, json as sanic_json
 from sqlalchemy import select
 

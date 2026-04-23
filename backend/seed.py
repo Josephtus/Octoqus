@@ -2,7 +2,7 @@ import asyncio
 import structlog
 from sqlalchemy import select
 
-from src.database import get_session
+from src.database import get_session, dispose_engine
 from src.models import User, GlobalRole
 from src.services.security import hash_password
 
@@ -40,5 +40,11 @@ async def seed_admin():
         print("Yeni Admin kullanıcısı başarıyla eklendi.")
         logger.info("Admin kullanıcısı 'admin@admin.com' başarıyla veritabanına eklendi.")
 
+async def run_seed():
+    try:
+        await seed_admin()
+    finally:
+        await dispose_engine()
+
 if __name__ == "__main__":
-    asyncio.run(seed_admin())
+    asyncio.run(run_seed())

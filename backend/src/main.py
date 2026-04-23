@@ -20,7 +20,7 @@ from pathlib import Path
 import redis.asyncio as aioredis
 import structlog
 from sanic import Request, Sanic
-from sanic.exceptions import TooManyRequests
+#from sanic.exceptions import TooManyRequests
 from sanic.response import HTTPResponse, json as sanic_json
 from sanic_ext import Extend
 from src.database import dispose_engine, init_db
@@ -30,8 +30,7 @@ from src.database import dispose_engine, init_db
 # ---------------------------------------------------------------------------
 structlog.configure(
     processors=[
-        structlog.stdlib.add_log_level,
-        structlog.stdlib.add_logger_name,
+        structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
@@ -48,7 +47,6 @@ logger = structlog.get_logger(__name__)
 # Sanic Uygulama Oluşturma
 # ---------------------------------------------------------------------------
 app = Sanic("ExpenseTracker")
-Extend(app)
 # ---------------------------------------------------------------------------
 # Uygulama Yapılandırması (.env değerleri Sanic config'e aktarılır)
 # ---------------------------------------------------------------------------
@@ -57,6 +55,8 @@ app.config.update(
         "DEBUG": os.getenv("SANIC_DEBUG", "false").lower() == "true",
         "OAS": False,                   # OpenAPI Spec (sanic-ext) — ileride aktif edilebilir
         "CORS_ORIGINS": "*",            # Görev 5'te kısıtlanacak
+        "CORS_ALLOW_HEADERS": "Authorization, Content-Type, *",
+        "CORS_METHODS": "*",
         "KEEP_ALIVE_TIMEOUT": 30,
         "REQUEST_TIMEOUT": 60,
         "RESPONSE_TIMEOUT": 60,
@@ -193,12 +193,17 @@ async def rate_limit_middleware(request: Request) -> None:
         if current_count > RATE_LIMIT_PER_MINUTE:
             # Retry-After başlığı: kaç saniye beklemesi gerektiği
             ttl = await redis_client.ttl(rate_key)
-            raise TooManyRequests(
-                f"Rate limit exceeded. Try again in {ttl} seconds.",
-                headers={"Retry-After": str(ttl)},
+            return sanic_json(
+                {
+                    "error": "Rate limit exceeded",
+                    "retry_after": ttl
+                },
+                status=429,
+                headers={
+                    "Retry-After": str(ttl)
+                }
             )
-    except TooManyRequests:
-        raise
+    
     except Exception as exc:
         # Redis hatası → rate limiting devre dışı, isteği geçir (fail-open)
         logger.warning("rate_limit.redis_error", error=str(exc), ip=client_ip)
@@ -219,8 +224,11 @@ async def log_request(request: Request) -> None:
 
 
 @app.middleware("response")
-async def log_response(request: Request, response: HTTPResponse) -> HTTPResponse:
-    """Giden her HTTP yanıtını loglar."""
+async def handle_cors_and_log_response(request: Request, response: HTTPResponse) -> HTTPResponse:
+    """Giden her HTTP yanıtını loglar ve eksik CORS başlıklarını tamamlar."""
+    if "Access-Control-Allow-Headers" not in response.headers:
+        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept, Origin"
+    
     logger.info(
         "http.response",
         method=request.method,
@@ -303,6 +311,7 @@ app.blueprint(social_bp)
 app.blueprint(reports_bp)
 app.blueprint(admin_bp)
 
+Extend(app)
 
 # =============================================================================
 # UYGULAMA BAŞLATMA
