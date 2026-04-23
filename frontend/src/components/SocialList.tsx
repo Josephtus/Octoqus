@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../utils/api';
+import { UserProfileModal } from './UserProfileModal';
 
 interface UserProfile {
   id: number;
@@ -8,7 +9,7 @@ interface UserProfile {
   profile_photo: string | null;
 }
 
-export const SocialList: React.FC<{ currentUserId: number | null }> = ({ currentUserId }) => {
+export const SocialList: React.FC<{ currentUserId: number | null, activeGroupId: number | null }> = ({ currentUserId, activeGroupId }) => {
   const [followers, setFollowers] = useState<UserProfile[]>([]);
   const [following, setFollowing] = useState<UserProfile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -16,6 +17,19 @@ export const SocialList: React.FC<{ currentUserId: number | null }> = ({ current
   const [loading, setLoading] = useState(true);
   const [searchLoading, setSearchLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string, type: 'error' | 'success' } | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+
+  const handleInvite = async (targetUserId: number) => {
+    if (!activeGroupId) return;
+    setMessage(null);
+    try {
+      const res = await apiFetch(`/groups/${activeGroupId}/invite/${targetUserId}`, { method: 'POST' });
+      const data = await res.json();
+      setMessage({ text: data.message, type: 'success' });
+    } catch (err: any) {
+      setMessage({ text: "Davet gönderilemedi. Kullanıcı zaten üye olabilir.", type: 'error' });
+    }
+  };
 
   const fetchSocialData = async () => {
     if (!currentUserId) return;
@@ -111,22 +125,32 @@ export const SocialList: React.FC<{ currentUserId: number | null }> = ({ current
               <div className="flex flex-col gap-2">
                 {searchResults.map(user => (
                   <div key={user.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-800/30 border border-slate-700/50">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center">
+                    <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setSelectedUserId(user.id)}>
+                      <div className="w-8 h-8 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center group-hover:ring-2 group-hover:ring-[#00f0ff]/50 transition-all">
                         {user.profile_photo ? (
                           <img src={`http://localhost:8000${user.profile_photo}`} alt={user.name} className="w-full h-full object-cover" />
                         ) : (
                           <span className="text-slate-400 text-xs font-bold">{user.name.charAt(0)}</span>
                         )}
                       </div>
-                      <span className="text-slate-200 text-sm font-medium">{user.name} {user.surname}</span>
+                      <span className="text-slate-200 text-sm font-medium group-hover:text-[#00f0ff] transition-colors">{user.name} {user.surname}</span>
                     </div>
-                    <button 
-                      onClick={() => handleFollow(user.id)}
-                      className="text-xs font-bold text-[#00f0ff] hover:underline"
-                    >
-                      Takip Et
-                    </button>
+                    <div className="flex gap-3">
+                      {activeGroupId && (
+                        <button 
+                          onClick={() => handleInvite(user.id)}
+                          className="text-xs font-bold text-amber-500 hover:underline"
+                        >
+                          Gruba Davet Et
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => handleFollow(user.id)}
+                        className="text-xs font-bold text-[#00f0ff] hover:underline"
+                      >
+                        Takip Et
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -153,8 +177,8 @@ export const SocialList: React.FC<{ currentUserId: number | null }> = ({ current
             <div className="flex flex-col gap-3">
               {following.map(user => (
                 <div key={user.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-800/50 border border-slate-700 hover:border-slate-600 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center">
+                  <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setSelectedUserId(user.id)}>
+                    <div className="w-10 h-10 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center group-hover:ring-2 group-hover:ring-[#00f0ff]/50 transition-all">
                       {user.profile_photo ? (
                         <img src={`http://localhost:8000${user.profile_photo}`} alt={user.name} className="w-full h-full object-cover" />
                       ) : (
@@ -162,16 +186,26 @@ export const SocialList: React.FC<{ currentUserId: number | null }> = ({ current
                       )}
                     </div>
                     <div>
-                      <p className="text-slate-200 font-medium">{user.name} {user.surname}</p>
+                      <p className="text-slate-200 font-medium group-hover:text-[#00f0ff] transition-colors">{user.name} {user.surname}</p>
                       <p className="text-xs text-slate-500">ID: {user.id}</p>
                     </div>
                   </div>
-                  <button 
-                    onClick={() => handleUnfollow(user.id)}
-                    className="text-xs font-bold text-red-400 hover:text-red-300 hover:underline"
-                  >
-                    Takipten Çık
-                  </button>
+                  <div className="flex gap-4">
+                    {activeGroupId && (
+                      <button 
+                        onClick={() => handleInvite(user.id)}
+                        className="text-xs font-bold text-amber-500 hover:underline"
+                      >
+                        Davet Et
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => handleUnfollow(user.id)}
+                      className="text-xs font-bold text-red-400 hover:text-red-300 hover:underline"
+                    >
+                      Takipten Çık
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -188,8 +222,8 @@ export const SocialList: React.FC<{ currentUserId: number | null }> = ({ current
           ) : (
             <div className="flex flex-col gap-3">
               {followers.map(user => (
-                <div key={user.id} className="flex items-center gap-3 p-3 rounded-xl bg-slate-800/50 border border-slate-700">
-                  <div className="w-10 h-10 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center border border-[#b026ff]/30">
+                <div key={user.id} className="flex items-center gap-3 p-3 rounded-xl bg-slate-800/50 border border-slate-700 cursor-pointer group" onClick={() => setSelectedUserId(user.id)}>
+                  <div className="w-10 h-10 rounded-full bg-slate-700 overflow-hidden flex items-center justify-center border border-[#b026ff]/30 group-hover:ring-2 group-hover:ring-[#00f0ff]/50 transition-all">
                     {user.profile_photo ? (
                       <img src={`http://localhost:8000${user.profile_photo}`} alt={user.name} className="w-full h-full object-cover" />
                     ) : (
@@ -197,8 +231,18 @@ export const SocialList: React.FC<{ currentUserId: number | null }> = ({ current
                     )}
                   </div>
                   <div>
-                    <p className="text-slate-200 font-medium">{user.name} {user.surname}</p>
+                    <p className="text-slate-200 font-medium group-hover:text-[#00f0ff] transition-colors">{user.name} {user.surname}</p>
                     <p className="text-xs text-[#b026ff]">ID: {user.id}</p>
+                  </div>
+                  <div className="flex-1 flex justify-end">
+                    {activeGroupId && (
+                      <button 
+                        onClick={() => handleInvite(user.id)}
+                        className="text-xs font-bold text-amber-500 hover:underline"
+                      >
+                        Davet Et
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -206,6 +250,9 @@ export const SocialList: React.FC<{ currentUserId: number | null }> = ({ current
           )}
         </div>
       </div>
+      {selectedUserId && (
+        <UserProfileModal userId={selectedUserId} onClose={() => setSelectedUserId(null)} />
+      )}
     </div>
   );
 };

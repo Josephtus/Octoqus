@@ -173,12 +173,31 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, activeGroup
                     {status?.loading ? 'İstek Gönderiliyor...' : 'Gruba Katıl'}
                   </button>
                 ) : (
-                  <button
-                    onClick={() => onSelectGroup && onSelectGroup(group.id, group.name, group.role || 'USER', group.is_approved || false)}
-                    className="w-full py-3 rounded-xl font-bold bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/30 hover:bg-[#00f0ff] hover:text-slate-900 transition-all"
-                  >
-                    Gruba Git
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => onSelectGroup && onSelectGroup(group.id, group.name, group.role || 'USER', group.is_approved || false)}
+                      className="flex-1 py-3 rounded-xl font-bold bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/30 hover:bg-[#00f0ff] hover:text-slate-900 transition-all"
+                    >
+                      Gruba Git
+                    </button>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (window.confirm(`${group.name} grubundan ayrılmak istediğinize emin misiniz?`)) {
+                          try {
+                            await apiFetch(`/groups/${group.id}/leave`, { method: 'POST' });
+                            window.location.reload();
+                          } catch (err) {
+                            alert("Ayrılma işlemi başarısız.");
+                          }
+                        }
+                      }}
+                      className="p-3 rounded-xl bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500 hover:text-white transition-all"
+                      title="Gruptan Ayrıl"
+                    >
+                      🚪
+                    </button>
+                  </div>
                 )}
               </div>
             </div>

@@ -107,16 +107,33 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
   }
 
   return (
-    <div className="w-full space-y-4 relative">
-      {expenses.map((expense) => (
-        <ExpenseCard 
-          key={expense.id} 
-          expense={expense} 
-          currentUserId={currentUserId}
-          onDelete={handleDelete}
-          onEdit={setEditingExpense}
-        />
-      ))}
+    <div className="w-full space-y-6 relative">
+      {/* Borç Optimizasyonu Bilgi Kartı */}
+      <div className="bg-slate-900/40 border border-slate-800/60 p-4 rounded-2xl flex items-center justify-between group hover:border-[#00f0ff]/30 transition-all">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-[#00f0ff]/10 rounded-lg text-[#00f0ff]">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-sm font-bold text-slate-200">Akıllı Borç Hesaplama Aktif</p>
+            <p className="text-[10px] text-slate-500 font-medium italic">Kimin kime ne kadar ödeyeceğini "Borç Durumu" sekmesinden anlık olarak takip edebilirsiniz.</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        {expenses.map((expense) => (
+          <ExpenseCard 
+            key={expense.id} 
+            expense={expense} 
+            currentUserId={currentUserId}
+            onDelete={handleDelete}
+            onEdit={setEditingExpense}
+          />
+        ))}
+      </div>
 
       {/* Düzenleme Modalı */}
       {editingExpense && (

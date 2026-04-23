@@ -7,7 +7,9 @@ interface DebtListProps {
 
 interface Transaction {
   from_user_id: number;
+  from_user_name: string;
   to_user_id: number;
+  to_user_name: string;
   amount: number;
 }
 
@@ -96,7 +98,7 @@ export const DebtList: React.FC<DebtListProps> = ({ groupId }) => {
             <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 text-center sm:text-left text-lg flex-1">
               {/* Ödeyecek Kişi (Kırmızı Ton) */}
               <span className="font-bold text-red-400 bg-red-950/40 px-4 py-2 rounded-xl border border-red-900/50 shadow-inner">
-                Kullanıcı {tx.from_user_id}
+                {tx.from_user_name}
               </span>
               
               {/* Yön Oku */}
@@ -108,7 +110,7 @@ export const DebtList: React.FC<DebtListProps> = ({ groupId }) => {
 
               {/* Alacaklı Kişi (Yeşil Ton) */}
               <span className="font-bold text-emerald-400 bg-emerald-950/40 px-4 py-2 rounded-xl border border-emerald-900/50 shadow-inner">
-                Kullanıcı {tx.to_user_id}
+                {tx.to_user_name}
               </span>
               
               <span className="text-slate-400 text-sm mt-1 sm:mt-0 sm:ml-2 font-medium">kişisine</span>

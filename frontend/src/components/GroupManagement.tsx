@@ -10,6 +10,14 @@ interface Member {
   is_approved: boolean;
 }
 
+interface BannedUser {
+  user_id: number;
+  name: string;
+  surname: string;
+  mail: string;
+  banned_at: string;
+}
+
 interface GroupInfo {
   name: string;
   content: string;
@@ -22,6 +30,7 @@ interface GroupManagementProps {
 
 export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpdate }) => {
   const [members, setMembers] = useState<Member[]>([]);
+  const [bannedUsers, setBannedUsers] = useState<BannedUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [groupInfo, setGroupInfo] = useState<GroupInfo>({ name: '', content: '' });
   const [updateLoading, setUpdateLoading] = useState(false);
@@ -46,9 +55,19 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
     }
   };
 
+  const fetchBans = async () => {
+    try {
+      const res = await apiFetch(`/groups/${groupId}/bans`);
+      const data = await res.json();
+      setBannedUsers(data.bans || []);
+    } catch (err) {
+      console.error("Banlı kullanıcılar yüklenemedi", err);
+    }
+  };
+
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchMembers(), fetchGroupInfo()]).finally(() => setLoading(false));
+    Promise.all([fetchMembers(), fetchGroupInfo(), fetchBans()]).finally(() => setLoading(false));
   }, [groupId]);
 
   const handleApprove = async (userId: number) => {
@@ -96,11 +115,20 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
   const handleTransfer = async (userId: number) => {
     if (!window.confirm("Liderliği bu üyeye devretmek istediğinize emin misiniz? Bu işlemden sonra yönetici yetkinizi kaybedeceksiniz.")) return;
     try {
-      await apiFetch(`/groups/${groupId}/transfer/${userId}`, { method: 'POST' });
+      await apiFetch(`/groups/${groupId}/transfer_leadership/${userId}`, { method: 'POST' });
       onUpdate();
-      window.location.reload(); // Rol değiştiği için sayfayı yenilemek en temizi
+      window.location.reload(); 
     } catch (err) {
       alert("Devir başarısız");
+    }
+  };
+
+  const handleUnban = async (userId: number) => {
+    try {
+      await apiFetch(`/groups/${groupId}/ban/${userId}`, { method: 'DELETE' });
+      fetchBans();
+    } catch (err) {
+      alert("Ban kaldırılamadı");
     }
   };
 
@@ -227,6 +255,32 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
               ))}
             </tbody>
           </table>
+        </div>
+      </section>
+
+      {/* Banlı Kullanıcılar */}
+      <section className="bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-xl">
+        <h3 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2">
+          <span className="w-2 h-8 bg-red-600 rounded-full"></span>
+          Banlı Kullanıcılar ({bannedUsers.length})
+        </h3>
+        <div className="space-y-3">
+          {bannedUsers.map(user => (
+            <div key={user.user_id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-slate-950/50 rounded-2xl border border-slate-800/50">
+              <div>
+                <div className="font-bold text-slate-200">{user.name} {user.surname}</div>
+                <div className="text-[10px] text-slate-500">{user.mail}</div>
+                <div className="text-[10px] text-slate-400 mt-1">Ban Tarihi: {new Date(user.banned_at).toLocaleDateString()}</div>
+              </div>
+              <button 
+                onClick={() => handleUnban(user.user_id)} 
+                className="mt-3 sm:mt-0 bg-red-500/10 text-red-500 border border-red-500/30 px-4 py-2 rounded-lg text-xs font-bold hover:bg-red-500 hover:text-white transition-all"
+              >
+                Banı Kaldır
+              </button>
+            </div>
+          ))}
+          {bannedUsers.length === 0 && <p className="text-slate-600 italic text-sm text-center py-4">Banlı kullanıcı bulunmuyor.</p>}
         </div>
       </section>
     </div>

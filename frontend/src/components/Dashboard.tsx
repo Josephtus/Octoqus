@@ -259,7 +259,7 @@ export const Dashboard: React.FC = () => {
           </div>
         )}
 
-        {activeTab === 'Sosyal' && <SocialList currentUserId={user?.id} />}
+        {activeTab === 'Sosyal' && <SocialList currentUserId={user?.id} activeGroupId={activeGroupId} />}
         {activeTab === 'Profil' && <ProfileSettings />}
         {activeTab === 'Şikayet' && <ReportForm />}
         {activeTab === 'Admin' && user?.role?.toLowerCase() === 'admin' && <AdminPanel />}
