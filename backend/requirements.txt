@@ -37,6 +37,8 @@ python-dotenv==1.0.1            # .env yükleme (geliştirme ortamı)
 ujson==5.9.0                    # Ultra-fast JSON serialization
 python-multipart==0.0.9         # Multipart form / file upload desteği
 httpx==0.27.0                   # Async HTTP client (dış servis istekleri)
+aiosmtplib==3.0.1               # Async SMTP client (Şifre sıfırlama vb.)
+email-validator==2.1.1          # Pydantic EmailStr desteği için
 
 # --- Logging ---
 structlog==24.1.0               # Yapılandırılmış loglama (JSON output)

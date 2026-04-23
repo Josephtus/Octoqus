@@ -11,6 +11,7 @@ Endpoints:
 """
 
 import structlog
+from uuid import uuid4
 from pydantic import BaseModel, EmailStr, ValidationError, field_validator
 from sanic import Blueprint, Request
 from sanic.exceptions import BadRequest, NotFound, Unauthorized
@@ -25,6 +26,7 @@ from src.services.security import (
     protected,
     verify_password,
 )
+from src.services.email import send_password_reset_email
 
 logger = structlog.get_logger(__name__)
 
@@ -96,6 +98,26 @@ class LoginRequest(BaseModel):
     def check_password_not_empty(cls, v: str) -> str:
         if not v:
             raise ValueError("Şifre boş olamaz.")
+        return v
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Şifremi unuttum isteği."""
+    mail: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    """Şifre sıfırlama isteği."""
+    token: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Yeni şifre en az 8 karakter olmalıdır.")
+        if len(v) > 128:
+            raise ValueError("Yeni şifre en fazla 128 karakter olabilir.")
         return v
 
 
@@ -316,5 +338,103 @@ async def get_me(request: Request) -> HTTPResponse:
 
         return sanic_json(
             {"user": _build_user_response(user)},
+            status=200,
+        )
+
+
+# =============================================================================
+# ENDPOINT 4: POST /api/auth/forgot-password — Şifremi Unuttum
+# =============================================================================
+
+@auth_bp.post("/forgot-password")
+async def forgot_password(request: Request) -> HTTPResponse:
+    """
+    Kullanıcıya şifre sıfırlama linki/token'ı gönderir.
+    Timing attack/Mail taraması (enumeration) önlemek için kullanıcı
+    bulunmasa dahi 200 başarılı dönülür.
+    """
+    body = request.json
+    if not body:
+        raise BadRequest("İstek gövdesi JSON formatında olmalıdır.")
+
+    try:
+        data = ForgotPasswordRequest.model_validate(body)
+    except ValidationError as exc:
+        errors = [{"field": e["loc"][0] if e["loc"] else "unknown", "message": e["msg"]} for e in exc.errors()]
+        raise BadRequest(f"Validasyon hatası: {errors}")
+
+    async with get_session() as session:
+        user = await _get_user_by_email(session, data.mail)
+
+        if user and user.is_active:
+            # Token üret ve Redis'e kaydet
+            reset_token = uuid4().hex
+            redis_key = f"reset_token:{reset_token}"
+            
+            # 15 dakika (900 saniye) geçerlilik
+            await request.app.ctx.redis.setex(redis_key, 900, str(user.id))
+
+            # E-posta gönder (arka planda asenkron çalışsın diye await yapıyoruz ama 
+            # asıl SMTP I/O async olduğundan main loop bloklanmaz)
+            await send_password_reset_email(data.mail, reset_token)
+
+            logger.info("auth.forgot_password.sent", user_id=user.id)
+        else:
+            # Kullanıcı yok veya inaktif. Simüle ediyoruz (security).
+            logger.info("auth.forgot_password.simulated", mail=data.mail)
+
+    return sanic_json(
+        {"message": "Şifre sıfırlama bağlantısı e-posta adresinize gönderildi (kayıtlıysa)."},
+        status=200,
+    )
+
+
+# =============================================================================
+# ENDPOINT 5: POST /api/auth/reset-password — Şifre Sıfırlama
+# =============================================================================
+
+@auth_bp.post("/reset-password")
+async def reset_password(request: Request) -> HTTPResponse:
+    """
+    E-posta ile gelen token'ı kullanarak şifreyi değiştirir.
+    Token 15 dk geçerlidir ve tek kullanımlıktır.
+    """
+    body = request.json
+    if not body:
+        raise BadRequest("İstek gövdesi JSON formatında olmalıdır.")
+
+    try:
+        data = ResetPasswordRequest.model_validate(body)
+    except ValidationError as exc:
+        errors = [{"field": e["loc"][0] if e["loc"] else "unknown", "message": e["msg"]} for e in exc.errors()]
+        raise BadRequest(f"Validasyon hatası: {errors}")
+
+    redis_key = f"reset_token:{data.token}"
+    
+    # Redis'ten user_id al
+    user_id_bytes = await request.app.ctx.redis.get(redis_key)
+    if not user_id_bytes:
+        logger.warning("auth.reset_password.invalid_token", token=data.token)
+        raise BadRequest("Geçersiz veya süresi dolmuş bir token kullandınız.")
+
+    user_id = int(user_id_bytes.decode("utf-8"))
+
+    async with get_session() as session:
+        stmt = select(User).where(User.id == user_id, User.deleted_at.is_(None))
+        user = await session.scalar(stmt)
+
+        if not user or not user.is_active:
+            raise BadRequest("Kullanıcı hesabı geçerli değil.")
+
+        # Yeni şifreyi hashle ve kaydet
+        user.password = hash_password(data.new_password)
+        
+        # Tek kullanımlık olduğu için token'ı Redis'ten sil
+        await request.app.ctx.redis.delete(redis_key)
+
+        logger.info("auth.reset_password.success", user_id=user.id)
+
+        return sanic_json(
+            {"message": "Şifreniz başarıyla sıfırlandı. Yeni şifrenizle giriş yapabilirsiniz."},
             status=200,
         )
