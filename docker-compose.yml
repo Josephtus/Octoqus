@@ -101,6 +101,26 @@ services:
         reservations:
           memory: 128M
 
+  # ---------------------------------------------------------------------------
+  # Frontend - React (Vite) MVP
+  # ---------------------------------------------------------------------------
+  frontend:
+    image: node:20-alpine
+    container_name: expense_frontend
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # Hosttaki node_modules karmaşasını önlemek için
+    ports:
+      - "5173:5173"
+    # Konteyner kalktığında paketleri kurup Vite sunucusunu dışa açık başlatır
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    networks:
+      - expense_net
+    depends_on:
+      - backend
+
 # =============================================================================
 # Named Volumes - Kalıcı Depolama
 # =============================================================================

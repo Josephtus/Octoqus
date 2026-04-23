@@ -1,6 +1,9 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-neon-purple: #b026ff;
+  --color-neon-blue: #00f0ff;
+}
 
 @layer utilities {
   .drop-shadow-glow-purple {

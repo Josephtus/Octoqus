@@ -22,7 +22,7 @@ import structlog
 from sanic import Request, Sanic
 from sanic.exceptions import TooManyRequests
 from sanic.response import HTTPResponse, json as sanic_json
-
+from sanic_ext import Extend
 from src.database import dispose_engine, init_db
 
 # ---------------------------------------------------------------------------
@@ -48,7 +48,7 @@ logger = structlog.get_logger(__name__)
 # Sanic Uygulama Oluşturma
 # ---------------------------------------------------------------------------
 app = Sanic("ExpenseTracker")
-
+Extend(app)
 # ---------------------------------------------------------------------------
 # Uygulama Yapılandırması (.env değerleri Sanic config'e aktarılır)
 # ---------------------------------------------------------------------------
