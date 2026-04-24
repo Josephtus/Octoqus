@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch, getImageUrl } from '../utils/api';
-import { User, Mail, Phone, Calendar, Camera, Save, Shield, BadgeCheck, Trash2, Key, CheckCircle2, AlertCircle } from 'lucide-react';
+import { User, Mail, Phone, Calendar, Camera, Save, Shield, BadgeCheck, Trash2, Key, CheckCircle2, AlertCircle, Users, UserPlus, UserMinus, ChevronRight, Settings } from 'lucide-react';
+import { Pagination } from './common/Pagination';
 
 interface ProfileSettingsProps {
   onUpdate: () => void;
@@ -11,6 +12,14 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState<'settings' | 'followers' | 'following'>('settings');
+  const [socialData, setSocialData] = useState<any[]>([]);
+  const [socialLoading, setSocialLoading] = useState(false);
+  const [socialPage, setSocialPage] = useState(1);
+  const [socialTotalCount, setSocialTotalCount] = useState(0);
+  const [selectedProfile, setSelectedProfile] = useState<any>(null);
+  const socialLimit = 6;
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [formData, setFormData] = useState({
@@ -46,9 +55,37 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
     }
   };
 
+  const fetchSocialList = async (tab: 'followers' | 'following', pageNum: number = 1) => {
+    if (!user) return;
+    setSocialLoading(true);
+    try {
+      const res = await apiFetch(`/social/${user.id}/${tab}?page=${pageNum}&limit=${socialLimit}`);
+      const data = await res.json();
+      setSocialData(data.data || []);
+      setSocialTotalCount(data.total_count || 0);
+    } catch (err) {
+      console.error(`${tab} listesi yüklenemedi:`, err);
+    } finally {
+      setSocialLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchProfile();
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'settings') {
+      setSocialPage(1);
+      fetchSocialList(activeTab, 1);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'settings') {
+      fetchSocialList(activeTab, socialPage);
+    }
+  }, [socialPage]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,7 +147,6 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
       const res = await apiFetch('/users/me/avatar', {
         method: 'POST',
         body: formData,
-        // FormData kullanırken Content-Type başlığını tarayıcıya bırakmalıyız
       });
       if (!res.ok) throw new Error("Yükleme hatası");
       alert("Profil fotoğrafı güncellendi.");
@@ -134,6 +170,16 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
     }
   };
 
+  const handleUnfollow = async (targetId: number) => {
+    if (!window.confirm("Takipten çıkmak istediğinize emin misiniz?")) return;
+    try {
+      await apiFetch(`/social/unfollow/${targetId}`, { method: 'DELETE' });
+      setSocialData(prev => prev.filter(u => u.id !== targetId));
+    } catch (err) {
+      alert("İşlem başarısız.");
+    }
+  };
+
   if (loading) return (
     <div className="flex justify-center py-20">
       <div className="w-12 h-12 border-4 border-[#00f0ff]/20 border-t-[#00f0ff] rounded-full animate-spin" />
@@ -141,7 +187,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
   );
 
   return (
-    <div className="max-w-4xl mx-auto space-y-12 animate-fade-in">
+    <div className="max-w-4xl mx-auto space-y-12 animate-fade-in pb-20">
       {/* Profil Header Card */}
       <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[40px] p-8 md:p-12 shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-[#00f0ff]/5 blur-3xl rounded-full -mr-32 -mt-32 pointer-events-none" />
@@ -181,136 +227,304 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
               </div>
             </div>
             <p className="text-slate-400 font-medium mb-1">{user?.mail}</p>
-            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Kayıt Tarihi: {new Date(user?.created_at).toLocaleDateString('tr-TR')}</p>
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-6">Kayıt Tarihi: {new Date(user?.created_at).toLocaleDateString('tr-TR')}</p>
+            
+            {/* Social Tabs Integration */}
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-4">
+              <button 
+                onClick={() => setActiveTab('settings')}
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                  activeTab === 'settings' ? 'bg-white text-slate-950 shadow-lg' : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
+                }`}
+              >
+                <Settings size={14} /> Ayarlar
+              </button>
+              <button 
+                onClick={() => setActiveTab('following')}
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                  activeTab === 'following' ? 'bg-[#00f0ff] text-slate-950 shadow-lg shadow-[#00f0ff]/20' : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
+                }`}
+              >
+                <Users size={14} /> Takip Edilenler
+              </button>
+              <button 
+                onClick={() => setActiveTab('followers')}
+                className={`flex items-center gap-2 px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                  activeTab === 'followers' ? 'bg-[#b026ff] text-white shadow-lg shadow-[#b026ff]/20' : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
+                }`}
+              >
+                <User size={14} /> Takipçiler
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Profil Form Card */}
-      <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[40px] p-8 md:p-12 shadow-2xl">
-        <form onSubmit={handleUpdate} className="space-y-10">
-          <div className="flex items-center gap-4 mb-2">
-            <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-[#00f0ff]">
-              <User size={16} />
-            </div>
-            <h3 className="text-xl font-black text-white tracking-tight">Kişisel Bilgiler</h3>
-          </div>
+      <AnimatePresence mode="wait">
+        {activeTab === 'settings' ? (
+          <motion.div 
+            key="settings"
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+            className="space-y-12"
+          >
+            {/* Profil Form Card */}
+            <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[40px] p-8 md:p-12 shadow-2xl">
+              <form onSubmit={handleUpdate} className="space-y-10">
+                <div className="flex items-center gap-4 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-[#00f0ff]">
+                    <User size={16} />
+                  </div>
+                  <h3 className="text-xl font-black text-white tracking-tight">Kişisel Bilgiler</h3>
+                </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Adınız</label>
-              <input 
-                type="text" 
-                className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all font-bold"
-                value={formData.name}
-                onChange={(e) => setFormData({...formData, name: e.target.value})}
-                required
-              />
-            </div>
-            <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Soyadınız</label>
-              <input 
-                type="text" 
-                className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all font-bold"
-                value={formData.surname}
-                onChange={(e) => setFormData({...formData, surname: e.target.value})}
-                required
-              />
-            </div>
-            <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Telefon</label>
-              <input 
-                type="tel" 
-                className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all font-bold"
-                value={formData.phone_number}
-                onChange={(e) => setFormData({...formData, phone_number: e.target.value})}
-              />
-            </div>
-            <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Doğum Tarihi</label>
-              <input 
-                type="date" 
-                className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all font-bold"
-                value={formData.birthday}
-                onChange={(e) => setFormData({...formData, birthday: e.target.value})}
-              />
-            </div>
-          </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Adınız</label>
+                    <input 
+                      type="text" 
+                      className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all font-bold"
+                      value={formData.name}
+                      onChange={(e) => setFormData({...formData, name: e.target.value})}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Soyadınız</label>
+                    <input 
+                      type="text" 
+                      className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all font-bold"
+                      value={formData.surname}
+                      onChange={(e) => setFormData({...formData, surname: e.target.value})}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Telefon</label>
+                    <input 
+                      type="tel" 
+                      className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all font-bold"
+                      value={formData.phone_number}
+                      onChange={(e) => setFormData({...formData, phone_number: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Doğum Tarihi</label>
+                    <input 
+                      type="date" 
+                      className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all font-bold"
+                      value={formData.birthday}
+                      onChange={(e) => setFormData({...formData, birthday: e.target.value})}
+                    />
+                  </div>
+                </div>
 
-          <div className="pt-6 border-t border-white/5 flex flex-col md:flex-row gap-6 md:items-center justify-between">
-            <div className="flex items-center gap-3 text-emerald-500/80">
-              <CheckCircle2 size={16} />
-              <p className="text-[10px] font-bold uppercase tracking-widest">Bilgileriniz uçtan uca şifrelenir.</p>
+                <div className="pt-6 border-t border-white/5 flex flex-col md:flex-row gap-6 md:items-center justify-between">
+                  <div className="flex items-center gap-3 text-emerald-500/80">
+                    <CheckCircle2 size={16} />
+                    <p className="text-[10px] font-bold uppercase tracking-widest">Bilgileriniz uçtan uca şifrelenir.</p>
+                  </div>
+                  <button 
+                    type="submit"
+                    disabled={saving}
+                    className="px-12 py-5 bg-white text-slate-950 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-[#00f0ff] hover:shadow-[0_0_40px_rgba(0,240,255,0.3)] transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+                  >
+                    {saving ? 'Güncelleniyor...' : <><Save size={20} /> Güncelle</>}
+                  </button>
+                </div>
+              </form>
             </div>
-            <button 
-              type="submit"
-              disabled={saving}
-              className="px-12 py-5 bg-white text-slate-950 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-[#00f0ff] hover:shadow-[0_0_40px_rgba(0,240,255,0.3)] transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+
+            {/* Şifre Değiştirme Card */}
+            <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[40px] p-8 md:p-12 shadow-2xl">
+              <form onSubmit={handlePasswordChange} className="space-y-10">
+                <div className="flex items-center gap-4 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-[#b026ff]">
+                    <Key size={16} />
+                  </div>
+                  <h3 className="text-xl font-black text-white tracking-tight">Güvenlik ve Şifre</h3>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Mevcut Şifre</label>
+                    <input 
+                      type="password" 
+                      className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#b026ff]/50 transition-all font-bold"
+                      value={passwordData.current_password}
+                      onChange={(e) => setPasswordData({...passwordData, current_password: e.target.value})}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Yeni Şifre</label>
+                    <input 
+                      type="password" 
+                      className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#b026ff]/50 transition-all font-bold"
+                      value={passwordData.new_password}
+                      onChange={(e) => setPasswordData({...passwordData, new_password: e.target.value})}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Yeni Şifre Tekrar</label>
+                    <input 
+                      type="password" 
+                      className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#b026ff]/50 transition-all font-bold"
+                      value={passwordData.new_password_confirm}
+                      onChange={(e) => setPasswordData({...passwordData, new_password_confirm: e.target.value})}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t border-white/5 flex flex-col md:flex-row gap-6 md:items-center justify-between">
+                  <div className="flex items-center gap-3 text-red-500/80">
+                    <AlertCircle size={16} />
+                    <p className="text-[10px] font-bold uppercase tracking-widest">Güçlü bir şifre seçtiğinizden emin olun.</p>
+                  </div>
+                  <button 
+                    type="submit"
+                    disabled={pwSaving}
+                    className="px-12 py-5 bg-white/5 text-white border border-white/10 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-[#b026ff] hover:border-[#b026ff] hover:shadow-[0_0_40px_rgba(176,38,255,0.3)] transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+                  >
+                    {pwSaving ? 'Güncelleniyor...' : 'Şifreyi Değiştir'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div 
+            key="social"
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+            className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[40px] p-8 md:p-12 shadow-2xl min-h-[500px]"
+          >
+            <div className="flex items-center justify-between mb-10">
+              <div className="flex items-center gap-4">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeTab === 'following' ? 'bg-[#00f0ff]/10 text-[#00f0ff]' : 'bg-[#b026ff]/10 text-[#b026ff]'}`}>
+                  {activeTab === 'following' ? <Users size={20} /> : <User size={20} />}
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-white tracking-tight">
+                    {activeTab === 'following' ? 'Takip Edilenler' : 'Takipçiler'}
+                  </h3>
+                  <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Toplam {socialData.length} kullanıcı</p>
+                </div>
+              </div>
+            </div>
+
+            {socialLoading ? (
+              <div className="flex justify-center py-20">
+                <div className="w-10 h-10 border-4 border-white/5 border-t-white/40 rounded-full animate-spin" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {socialData.map((item, idx) => (
+                  <motion.div 
+                    key={item.id}
+                    initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.05 }}
+                    className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 transition-all group"
+                  >
+                    <div className="flex items-center gap-4 cursor-pointer" onClick={() => setSelectedProfile(item)}>
+                      <div className="w-12 h-12 rounded-xl bg-slate-800 overflow-hidden border border-white/10">
+                        {item.profile_photo ? (
+                          <img src={getImageUrl(item.profile_photo)} alt={item.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-lg">👤</div>
+                        )}
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-white tracking-tight">{item.name} {item.surname}</h4>
+                        <p className="text-slate-500 text-[9px] font-bold uppercase tracking-widest">{item.mail}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {activeTab === 'following' && (
+                        <button 
+                          onClick={() => handleUnfollow(item.id)}
+                          className="px-4 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all"
+                        >
+                          Takipten Çık
+                        </button>
+                      )}
+                      <button 
+                        onClick={() => setSelectedProfile(item)}
+                        className="p-2 bg-white/5 text-slate-400 hover:text-white rounded-xl transition-all"
+                      >
+                        <ChevronRight size={18} />
+                      </button>
+                    </div>
+                  </motion.div>
+                ))}
+                {socialData.length === 0 && (
+                  <div className="col-span-full py-20 flex flex-col items-center justify-center text-slate-600">
+                    <Users size={48} className="mb-4 opacity-10" />
+                    <p className="text-sm font-black uppercase tracking-widest opacity-30">Henüz kimse yok</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab !== 'settings' && socialTotalCount > socialLimit && (
+              <div className="mt-8 pt-8 border-t border-white/5">
+                <Pagination 
+                  currentPage={socialPage}
+                  totalCount={socialTotalCount}
+                  limit={socialLimit}
+                  onPageChange={setSocialPage}
+                />
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* User Detail Modal (Reusing SocialList logic) */}
+      <AnimatePresence>
+        {selectedProfile && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setSelectedProfile(null)}
+              className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" 
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-lg bg-slate-900 border border-white/10 rounded-[40px] shadow-2xl overflow-hidden p-10 pt-16"
             >
-              {saving ? 'Güncelleniyor...' : <><Save size={20} /> Güncelle</>}
-            </button>
-          </div>
-        </form>
-      </div>
+               <button 
+                onClick={() => setSelectedProfile(null)}
+                className="absolute top-6 right-6 p-2 bg-white/5 hover:bg-white/10 rounded-xl transition-all text-slate-400 hover:text-white z-10"
+              >
+                <Trash2 size={20} className="rotate-45" /> {/* Close icon substitute */}
+              </button>
 
-      {/* Şifre Değiştirme Card */}
-      <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[40px] p-8 md:p-12 shadow-2xl">
-        <form onSubmit={handlePasswordChange} className="space-y-10">
-          <div className="flex items-center gap-4 mb-2">
-            <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-[#b026ff]">
-              <Key size={16} />
-            </div>
-            <h3 className="text-xl font-black text-white tracking-tight">Güvenlik ve Şifre</h3>
+              <div className="flex flex-col items-center text-center">
+                <div className="w-32 h-32 rounded-[40px] bg-slate-800 border-4 border-white/10 overflow-hidden shadow-2xl mb-8">
+                  {selectedProfile.profile_photo ? (
+                    <img src={getImageUrl(selectedProfile.profile_photo)} alt={selectedProfile.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-4xl">👤</div>
+                  )}
+                </div>
+                <h3 className="text-3xl font-black text-white tracking-tighter mb-2">
+                  {selectedProfile.name} {selectedProfile.surname}
+                </h3>
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-10">{selectedProfile.mail}</p>
+                <button 
+                  onClick={() => setSelectedProfile(null)}
+                  className="w-full py-5 bg-white text-slate-950 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-[#00f0ff] transition-all"
+                >
+                  Kapat
+                </button>
+              </div>
+            </motion.div>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Mevcut Şifre</label>
-              <input 
-                type="password" 
-                className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#b026ff]/50 transition-all font-bold"
-                value={passwordData.current_password}
-                onChange={(e) => setPasswordData({...passwordData, current_password: e.target.value})}
-                required
-              />
-            </div>
-            <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Yeni Şifre</label>
-              <input 
-                type="password" 
-                className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#b026ff]/50 transition-all font-bold"
-                value={passwordData.new_password}
-                onChange={(e) => setPasswordData({...passwordData, new_password: e.target.value})}
-                required
-              />
-            </div>
-            <div className="space-y-3">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Yeni Şifre Tekrar</label>
-              <input 
-                type="password" 
-                className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#b026ff]/50 transition-all font-bold"
-                value={passwordData.new_password_confirm}
-                onChange={(e) => setPasswordData({...passwordData, new_password_confirm: e.target.value})}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="pt-6 border-t border-white/5 flex flex-col md:flex-row gap-6 md:items-center justify-between">
-            <div className="flex items-center gap-3 text-red-500/80">
-              <AlertCircle size={16} />
-              <p className="text-[10px] font-bold uppercase tracking-widest">Güçlü bir şifre seçtiğinizden emin olun.</p>
-            </div>
-            <button 
-              type="submit"
-              disabled={pwSaving}
-              className="px-12 py-5 bg-white/5 text-white border border-white/10 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-[#b026ff] hover:border-[#b026ff] hover:shadow-[0_0_40px_rgba(176,38,255,0.3)] transition-all disabled:opacity-50 flex items-center justify-center gap-3"
-            >
-              {pwSaving ? 'Güncelleniyor...' : 'Şifreyi Değiştir'}
-            </button>
-          </div>
-        </form>
-      </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
