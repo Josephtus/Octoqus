@@ -1,7 +1,7 @@
 """
 src/main.py
 ===========
-Sanic Uygulama Giriş Noktası — Expense Tracking & Social Finance Platform
+Sanic Uygulama Giriş Noktası — Octoqus Platform
 
 Sorumluluklar:
   1. Sanic app instance'ı oluşturma ve yapılandırma
@@ -46,7 +46,7 @@ logger = structlog.get_logger(__name__)
 # ---------------------------------------------------------------------------
 # Sanic Uygulama Oluşturma
 # ---------------------------------------------------------------------------
-app = Sanic("ExpenseTracker")
+app = Sanic("Octoqus")
 # ---------------------------------------------------------------------------
 # Uygulama Yapılandırması (.env değerleri Sanic config'e aktarılır)
 # ---------------------------------------------------------------------------
@@ -255,7 +255,7 @@ async def health_check(request: Request) -> HTTPResponse:
     Docker HEALTHCHECK ve load balancer probe'ları için kullanılır.
     DB ve Redis bağlantılarını da kontrol eder.
     """
-    checks: dict = {"status": "ok", "service": "expense-tracker"}
+    checks: dict = {"status": "ok", "service": "octoqus-api"}
 
     # Redis ping kontrolü
     try:

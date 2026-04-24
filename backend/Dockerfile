@@ -27,8 +27,8 @@ RUN pip install --upgrade pip && \
 # --- Runner Stage ---
 FROM python:3.11-slim AS runner
 
-LABEL maintainer="Expense Tracking Platform"
-LABEL description="Sanic async backend for Expense Tracking & Social Finance"
+LABEL maintainer="Octoqus Platform"
+LABEL description="Sanic async backend for Octoqus Expense Tracking"
 
 # Runtime için sadece libmysqlclient (gcc yok → küçük imaj)
 RUN apt-get update && apt-get install -y --no-install-recommends \

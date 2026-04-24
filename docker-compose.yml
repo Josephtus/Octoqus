@@ -1,7 +1,7 @@
 version: "3.9"
 
 # =============================================================================
-# Expense Tracking & Social Finance Platform
+# Octoqus - Expense Tracking & Social Finance Platform
 # Docker Compose - Infrastructure Definition
 # =============================================================================
 
@@ -12,7 +12,7 @@ services:
   # ---------------------------------------------------------------------------
   db:
     image: mysql:8.0
-    container_name: expense_db
+    container_name: octoqus_db
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
@@ -25,7 +25,7 @@ services:
       - mysql_data:/var/lib/mysql
       - ./backend/init_db:/docker-entrypoint-initdb.d # SQL init scripts (ileride)
     networks:
-      - expense_net
+      - octoqus_net
     healthcheck:
       test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}" ]
       interval: 10s
@@ -44,7 +44,7 @@ services:
   # ---------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
-    container_name: expense_redis
+    container_name: octoqus_redis
     restart: unless-stopped
     command: >
       redis-server --requirepass ${REDIS_PASSWORD} --maxmemory 256mb --maxmemory-policy allkeys-lru --appendonly yes
@@ -53,7 +53,7 @@ services:
     volumes:
       - redis_data:/data
     networks:
-      - expense_net
+      - octoqus_net
     healthcheck:
       test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping" ]
       interval: 10s
@@ -73,7 +73,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: expense_backend
+    container_name: octoqus_backend
     restart: unless-stopped
     env_file:
       - .env
@@ -82,7 +82,7 @@ services:
     volumes:
       - ./backend:/app # Geliştirme: hot-reload için mount
     networks:
-      - expense_net
+      - octoqus_net
     depends_on:
       db:
         condition: service_healthy
@@ -106,7 +106,7 @@ services:
   # ---------------------------------------------------------------------------
   frontend:
     image: node:20-alpine
-    container_name: expense_frontend
+    container_name: octoqus_frontend
     restart: unless-stopped
     working_dir: /app
     volumes:
@@ -117,7 +117,7 @@ services:
     # Konteyner kalktığında paketleri kurup Vite sunucusunu dışa açık başlatır
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     networks:
-      - expense_net
+      - octoqus_net
     depends_on:
       - backend
 
@@ -134,5 +134,5 @@ volumes:
 # Networks - Servisler arası izole iletişim
 # =============================================================================
 networks:
-  expense_net:
+  octoqus_net:
     driver: bridge
