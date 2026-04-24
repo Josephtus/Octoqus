@@ -41,6 +41,8 @@ def _build_public_user(user: User) -> dict:
         "id":            user.id,
         "name":          user.name,
         "surname":       user.surname,
+        "mail":          user.mail,
+        "age":           user.age,
         "profile_photo": user.profile_photo,
     }
 
@@ -214,3 +216,4 @@ async def list_following(request: Request, user_id: int) -> HTTPResponse:
             },
             status=200
         )
+

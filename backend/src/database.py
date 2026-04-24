@@ -85,6 +85,14 @@ async def init_db() -> None:
     """
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        
+        # Manuel Migration: Report tablosuna category sütunu ekle (yoksa)
+        try:
+            from sqlalchemy import text
+            await conn.execute(text("ALTER TABLE reports ADD COLUMN category VARCHAR(50) NOT NULL DEFAULT 'GENEL'"))
+        except Exception:
+            # Sütun zaten varsa hata verecektir, görmezden gel
+            pass
 
 
 async def dispose_engine() -> None:

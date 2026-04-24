@@ -232,7 +232,10 @@ async def update_profile(request: Request) -> HTTPResponse:
             updated_fields.append("phone_number")
         if data.birthday is not None:
             user.birthday = date.fromisoformat(data.birthday)
+            # Yaşı otomatik güncelle
+            user.age = user.calculated_age
             updated_fields.append("birthday")
+            updated_fields.append("age")
 
         # get_session context manager commit'i yönetir
         logger.info(
@@ -507,33 +510,47 @@ async def get_user_public_profile(request: Request, user_id: int) -> HTTPRespons
 async def search_users(request: Request) -> HTTPResponse:
     """
     Kullanıcıları isim, soyisim veya e-posta ile arar.
-    Sosyal ağda arkadaş bulmak için kullanılır.
+    Sosyal ağda arkadaş bulmak için kullanılır. Sayfalama destekler.
     """
     query = request.args.get("q", "").strip()
-    if len(query) < 2:
-        return sanic_json({"data": [], "message": "Arama terimi en az 2 karakter olmalıdır."}, status=200)
+    if not query:
+        return sanic_json({"data": [], "total_count": 0}, status=200)
+
+    try:
+        page = max(1, int(request.args.get("page", 1)))
+        limit = min(100, max(1, int(request.args.get("limit", 6))))
+    except (ValueError, TypeError):
+        page, limit = 1, 6
+    offset = (page - 1) * limit
 
     async with get_session() as session:
-        from sqlalchemy import or_
-        stmt = (
-            select(User)
-            .where(
-                or_(
-                    User.name.ilike(f"%{query}%"),
-                    User.surname.ilike(f"%{query}%"),
-                    User.mail.ilike(f"%{query}%")
-                ),
-                User.is_active.is_(True),
-                User.deleted_at.is_(None)
-            )
-            .limit(20)
+        from sqlalchemy import or_, func
+        
+        # Base query
+        stmt = select(User).where(
+            or_(
+                User.name.ilike(f"%{query}%"),
+                User.surname.ilike(f"%{query}%"),
+                User.mail.ilike(f"%{query}%")
+            ),
+            User.is_active.is_(True),
+            User.deleted_at.is_(None)
         )
+
+        # Count total matches
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total_count = await session.scalar(count_stmt) or 0
+
+        # Execute paginated query
+        stmt = stmt.order_by(User.name.asc()).offset(offset).limit(limit)
         users = list(await session.scalars(stmt))
 
         return sanic_json(
             {
                 "query": query,
-                "count": len(users),
+                "total_count": total_count,
+                "page": page,
+                "limit": limit,
                 "data": [_build_public_profile(u) for u in users]
             },
             status=200

@@ -91,6 +91,7 @@ def _build_report_response(report: Report) -> dict:
         "reported_message_id": report.reported_message_id,
         "reported_user_id": report.reported_user_id,
         "aciklama": report.aciklama,
+        "category": report.category,
         "status": report.status.value,
         "created_at": report.created_at.isoformat() if report.created_at else None,
     }
@@ -628,8 +629,9 @@ async def list_reports(request: Request) -> HTTPResponse:
     try:
         page = max(1, int(request.args.get("page", 1)))
         limit = min(100, max(1, int(request.args.get("limit", 20))))
+        category_filter = request.args.get("category")
     except (ValueError, TypeError):
-        page, limit = 1, 20
+        page, limit, category_filter = 1, 20, None
 
     offset = (page - 1) * limit
 
@@ -638,6 +640,8 @@ async def list_reports(request: Request) -> HTTPResponse:
 
         # Toplam sayıyı al
         count_stmt = select(func.count(Report.id))
+        if category_filter:
+            count_stmt = count_stmt.where(Report.category == category_filter)
         total_count = await session.scalar(count_stmt) or 0
 
         # PENDING olanları öncelikli getir, ardından creation date desc
@@ -648,16 +652,19 @@ async def list_reports(request: Request) -> HTTPResponse:
                 selectinload(Report.reported_message).selectinload(Message.sender),
                 selectinload(Report.reported_user)
             )
-            .order_by(
-                case(
-                    (Report.status == ReportStatus.PENDING, 0),
-                    else_=1
-                ),
-                Report.created_at.desc()
-            )
-            .offset(offset)
-            .limit(limit)
         )
+        
+        if category_filter:
+            stmt = stmt.where(Report.category == category_filter)
+
+        stmt = stmt.order_by(
+            case(
+                (Report.status == ReportStatus.PENDING, 0),
+                else_=1
+            ),
+            Report.created_at.desc()
+        ).offset(offset).limit(limit)
+
         reports = list(await session.scalars(stmt))
 
         return sanic_json(

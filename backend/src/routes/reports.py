@@ -37,6 +37,7 @@ reports_bp = Blueprint("reports", url_prefix="/api/reports")
 class CreateReportRequest(BaseModel):
     """Şikayet oluşturma isteği."""
     aciklama: str
+    category: str = "GENEL"
 
     @field_validator("aciklama")
     @classmethod
@@ -50,8 +51,46 @@ class CreateReportRequest(BaseModel):
 
 
 # =============================================================================
-# ENDPOINT 1: POST /api/reports/message/<message_id> — Mesaj Şikayet Et
+# ENDPOINT 0: POST /api/reports — Genel Şikayet/Geri Bildirim
 # =============================================================================
+
+@reports_bp.post("/")
+@protected
+async def create_general_report(request: Request) -> HTTPResponse:
+    """
+    Genel bir şikayet veya geri bildirim oluşturur.
+    """
+    body = request.json
+    if not body:
+        raise BadRequest("İstek gövdesi JSON formatında olmalıdır.")
+
+    # Frontend "content" gönderiyor olabilir, "aciklama"ya çevir
+    if "content" in body and "aciklama" not in body:
+        body["aciklama"] = body["content"]
+
+    try:
+        data = CreateReportRequest.model_validate(body)
+    except ValidationError as exc:
+        raise BadRequest(f"Validasyon hatası: {exc.errors()}")
+
+    reporter_id: int = int(request.ctx.user["sub"])
+
+    async with get_session() as session:
+        new_report = Report(
+            reporter_id=reporter_id,
+            aciklama=data.aciklama,
+            category=data.category
+        )
+        session.add(new_report)
+        await session.flush()
+
+        logger.info("report.general_created", report_id=new_report.id, category=data.category)
+
+        return sanic_json(
+            {"message": "Bildiriminiz başarıyla iletildi."},
+            status=201
+        )
+
 
 @reports_bp.post("/message/<message_id:int>")
 @protected
@@ -99,7 +138,8 @@ async def report_message(request: Request, message_id: int) -> HTTPResponse:
         new_report = Report(
             reporter_id=reporter_id,
             reported_message_id=message_id,
-            aciklama=data.aciklama
+            aciklama=data.aciklama,
+            category=data.category or "MESAJ"
         )
         session.add(new_report)
         await session.flush()
@@ -158,7 +198,8 @@ async def report_user(request: Request, target_user_id: int) -> HTTPResponse:
         new_report = Report(
             reporter_id=reporter_id,
             reported_user_id=target_user_id,
-            aciklama=data.aciklama
+            aciklama=data.aciklama,
+            category=data.category or "KULLANICI"
         )
         session.add(new_report)
         await session.flush()

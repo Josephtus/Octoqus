@@ -51,20 +51,20 @@ export const ReportForm: React.FC = () => {
         <form onSubmit={handleSubmit} className="space-y-10">
           <div className="space-y-6">
             <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Kategori Seçin</label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {categories.map((cat) => (
                 <button
                   key={cat.id}
                   type="button"
                   onClick={() => setCategory(cat.id)}
-                  className={`p-6 rounded-[32px] border transition-all flex flex-col items-center text-center gap-4 ${
+                  className={`p-4 rounded-[24px] border transition-all flex flex-col items-center text-center gap-3 ${
                     category === cat.id 
                       ? 'bg-white text-black border-white shadow-xl scale-105' 
                       : 'bg-white/5 text-slate-500 border-white/5 hover:border-white/20 hover:text-white'
                   }`}
                 >
-                  <cat.icon size={24} />
-                  <span className="text-[10px] font-black uppercase tracking-widest leading-none">{cat.label}</span>
+                  <cat.icon size={18} />
+                  <span className="text-[9px] font-black uppercase tracking-widest leading-tight">{cat.label}</span>
                 </button>
               ))}
             </div>
