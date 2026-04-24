@@ -162,6 +162,7 @@ def _build_user_response(user: User) -> dict:
         "age": user.calculated_age,
         "role": user.role.value,
         "is_active": user.is_active,
+        "birthday": user.birthday.isoformat() if user.birthday else None,
         "created_at": user.created_at.isoformat() if user.created_at else None,
     }
 

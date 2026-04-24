@@ -443,6 +443,9 @@ class Report(Base):
     )
 
     # Şikayet detayları
+    category: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="GENEL", server_default="GENEL"
+    )
     aciklama: Mapped[str] = mapped_column(
         Text, nullable=False, comment="Şikayetin ayrıntılı açıklaması"
     )

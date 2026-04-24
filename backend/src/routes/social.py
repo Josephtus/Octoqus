@@ -15,7 +15,7 @@ import structlog
 from sanic import Blueprint, Request
 from sanic.exceptions import BadRequest, NotFound
 from sanic.response import HTTPResponse, json as sanic_json
-from sqlalchemy import delete, insert, select
+from sqlalchemy import delete, insert, select, func
 from sqlalchemy.exc import IntegrityError
 
 from src.database import get_session
@@ -41,6 +41,8 @@ def _build_public_user(user: User) -> dict:
         "id":            user.id,
         "name":          user.name,
         "surname":       user.surname,
+        "mail":          user.mail,
+        "age":           user.age,
         "profile_photo": user.profile_photo,
     }
 
@@ -154,6 +156,11 @@ async def list_followers(request: Request, user_id: int) -> HTTPResponse:
             .offset(offset)
             .limit(limit)
         )
+        # Count total
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total_count = await session.scalar(count_stmt) or 0
+
+        # Execute
         followers = list(await session.scalars(stmt))
 
         return sanic_json(
@@ -161,7 +168,7 @@ async def list_followers(request: Request, user_id: int) -> HTTPResponse:
                 "user_id": user_id,
                 "page":    page,
                 "limit":   limit,
-                "count":   len(followers),
+                "total_count": total_count,
                 "data":    [_build_public_user(u) for u in followers],
             },
             status=200
@@ -202,6 +209,11 @@ async def list_following(request: Request, user_id: int) -> HTTPResponse:
             .offset(offset)
             .limit(limit)
         )
+        # Count total
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total_count = await session.scalar(count_stmt) or 0
+
+        # Execute
         following = list(await session.scalars(stmt))
 
         return sanic_json(
@@ -209,8 +221,9 @@ async def list_following(request: Request, user_id: int) -> HTTPResponse:
                 "user_id": user_id,
                 "page":    page,
                 "limit":   limit,
-                "count":   len(following),
+                "total_count": total_count,
                 "data":    [_build_public_user(u) for u in following],
             },
             status=200
         )
+
