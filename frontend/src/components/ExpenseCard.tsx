@@ -11,13 +11,12 @@ interface Expense {
 
 interface ExpenseCardProps {
   expense: Expense;
-  currentUserId?: number;
   onEdit: (expense: Expense) => void;
   onDelete: (expenseId: number) => void;
+  isOwner: boolean;
 }
 
-export const ExpenseCard: React.FC<ExpenseCardProps> = ({ expense, currentUserId, onEdit, onDelete }) => {
-  const isOwner = expense.added_by === currentUserId;
+export const ExpenseCard: React.FC<ExpenseCardProps> = ({ expense, onEdit, onDelete, isOwner }) => {
 
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between p-5 bg-slate-800 border border-slate-700 rounded-xl hover:border-slate-600 hover:shadow-lg transition-all group">

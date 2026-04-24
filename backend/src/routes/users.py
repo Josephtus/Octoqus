@@ -421,6 +421,48 @@ async def upload_avatar(request: Request) -> HTTPResponse:
 
 
 # =============================================================================
+# ENDPOINT 4: DELETE /api/users/me/avatar — Profil Fotoğrafı Silme
+# =============================================================================
+
+@users_bp.delete("/me/avatar")
+@protected
+async def delete_avatar(request: Request) -> HTTPResponse:
+    """
+    Kullanıcının profil fotoğrafını hem diskten hem veritabanından kalıcı olarak siler (Hard Delete).
+    """
+    user_id: int = int(request.ctx.user["sub"])
+
+    async with get_session() as session:
+        user = await get_active_user(session, user_id)
+
+        if not user.profile_photo:
+            raise BadRequest("Silinecek bir profil fotoğrafı bulunmuyor.")
+
+        # Fiziksel dosya yolu tespiti (Hard Delete)
+        # Örn: /uploads/avatars/abc.jpg -> ./uploads/avatars/abc.jpg
+        file_path = Path("." + user.profile_photo)
+        
+        try:
+            if file_path.exists() and file_path.is_file():
+                file_path.unlink()
+                logger.info("avatar.hard_deleted", user_id=user_id, path=str(file_path))
+        except Exception as exc:
+            logger.error("avatar.hard_delete_failed", user_id=user_id, error=str(exc))
+            # Dosya silinemese bile DB'yi temizle (veya kullanıcıya hata dön)
+            # Burada kritik bir hata olmadığı sürece devam edelim.
+
+        # Veritabanını güncelle
+        user.profile_photo = None
+        
+        logger.info("user.avatar.removed", user_id=user_id)
+
+        return sanic_json(
+            {"message": "Profil fotoğrafı başarıyla kaldırıldı."},
+            status=200,
+        )
+
+
+# =============================================================================
 # ENDPOINT 4: GET /api/users/<user_id:int> — Herkese Açık Profil
 # =============================================================================
 

@@ -13,7 +13,11 @@ interface UserProfile {
   role?: string;
 }
 
-export const ProfileSettings: React.FC = () => {
+interface ProfileSettingsProps {
+  onUpdate?: () => void;
+}
+
+export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -78,6 +82,7 @@ export const ProfileSettings: React.FC = () => {
       });
       setInfoMessage({ text: 'Profil başarıyla güncellendi.', isError: false });
       await fetchProfile();
+      onUpdate?.();
     } catch (err: any) {
       setInfoMessage({ text: err.message || 'Profil güncellenirken bir hata oluştu.', isError: true });
     } finally {
@@ -109,6 +114,7 @@ export const ProfileSettings: React.FC = () => {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      onUpdate?.();
     } catch (err: any) {
       setPwMessage({ text: err.message || 'Şifre değiştirilirken bir hata oluştu.', isError: true });
     } finally {
@@ -135,8 +141,26 @@ export const ProfileSettings: React.FC = () => {
       setAvatarMessage({ text: 'Profil fotoğrafı başarıyla yüklendi.', isError: false });
       setAvatarFile(null);
       await fetchProfile();
+      onUpdate?.();
     } catch (err: any) {
       setAvatarMessage({ text: err.message || 'Fotoğraf yüklenirken bir hata oluştu.', isError: true });
+    } finally {
+      setAvatarLoading(false);
+    }
+  };
+
+  const handleAvatarDelete = async () => {
+    if (!window.confirm("Profil fotoğrafınızı silmek istediğinize emin misiniz?")) return;
+    
+    setAvatarLoading(true);
+    setAvatarMessage(null);
+    try {
+      await apiFetch('/users/me/avatar', { method: 'DELETE' });
+      setAvatarMessage({ text: 'Profil fotoğrafı silindi.', isError: false });
+      await fetchProfile();
+      onUpdate?.();
+    } catch (err: any) {
+      setAvatarMessage({ text: err.message || 'Fotoğraf silinirken bir hata oluştu.', isError: true });
     } finally {
       setAvatarLoading(false);
     }
@@ -160,7 +184,7 @@ export const ProfileSettings: React.FC = () => {
   }
 
   return (
-    <div className="w-full max-w-5xl mx-auto p-4 sm:p-6 lg:p-8 space-y-8 animate-fade-in-up">
+    <div className="w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-8 animate-fade-in-up">
       <h2 className="text-3xl font-extrabold text-slate-100 tracking-tight border-b border-slate-800 pb-4">
         Profil Ayarları
       </h2>
@@ -170,11 +194,22 @@ export const ProfileSettings: React.FC = () => {
         <div className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center h-fit">
           <div className="relative mb-6 group">
             {user?.profile_photo ? (
-              <img 
-                src={getAvatarUrl(user.profile_photo)!} 
-                alt="Profil" 
-                className="w-40 h-40 rounded-full object-cover border-4 border-[#b026ff] shadow-[0_0_20px_rgba(176,38,255,0.4)] group-hover:scale-105 transition-transform duration-300"
-              />
+              <div className="relative">
+                <img 
+                  src={getAvatarUrl(user.profile_photo)!} 
+                  alt="Profil" 
+                  className="w-40 h-40 rounded-full object-cover border-4 border-[#b026ff] shadow-[0_0_20px_rgba(176,38,255,0.4)] group-hover:scale-105 transition-transform duration-300"
+                />
+                <button 
+                  onClick={handleAvatarDelete}
+                  className="absolute -top-1 -right-1 bg-red-600 text-white p-2 rounded-full shadow-xl hover:bg-red-500 transition-colors border-2 border-slate-900"
+                  title="Fotoğrafı Sil"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             ) : (
               <div className="w-40 h-40 rounded-full bg-slate-800 flex items-center justify-center border-4 border-slate-700 shadow-lg group-hover:scale-105 transition-transform duration-300">
                 <svg className="w-16 h-16 text-slate-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">

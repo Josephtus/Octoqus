@@ -30,7 +30,7 @@ export const Register: React.FC<RegisterProps> = ({ onRegisterSuccess, onSwitchT
     }
     
     try {
-      const response = await apiFetch('/auth/register', {
+      await apiFetch('/auth/register', {
         method: 'POST',
         body: JSON.stringify({ 
           name, 
@@ -42,8 +42,6 @@ export const Register: React.FC<RegisterProps> = ({ onRegisterSuccess, onSwitchT
           password 
         })
       });
-      
-      const data = await response.json();
       onRegisterSuccess();
       
     } catch (err: any) {

@@ -32,18 +32,19 @@ export const Dashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('Gruplar');
   const [activeSubTab, setActiveSubTab] = useState<GroupSubTabType>('Harcamalar');
 
+  const fetchUser = async () => {
+    try {
+      const response = await apiFetch('/auth/me');
+      const data = await response.json();
+      setUser(data.user);
+    } catch (error) {
+      console.error('Kullanıcı bilgileri alınırken hata:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const response = await apiFetch('/auth/me');
-        const data = await response.json();
-        setUser(data.user);
-      } catch (error) {
-        console.error('Kullanıcı bilgileri alınırken hata:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchUser();
   }, []);
 
@@ -88,7 +89,7 @@ export const Dashboard: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200">
       <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-40 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-5 border-b border-slate-800/50 mb-2">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-[#00f0ff] to-[#b026ff] rounded-xl flex items-center justify-center font-black text-slate-900 text-xl shadow-[0_0_15px_rgba(0,240,255,0.4)]">
@@ -115,8 +116,22 @@ export const Dashboard: React.FC = () => {
                 </button>
               )}
               
-              <div className="text-sm text-slate-400 border-l border-slate-800 pl-4 hidden sm:block">
-                <span className="text-slate-100 font-bold">{user?.name}</span>
+              <div className="flex items-center gap-3 border-l border-slate-800 pl-4 hidden sm:flex">
+                <div className="text-sm text-right">
+                  <span className="text-slate-100 font-bold block leading-tight">{user?.name}</span>
+                  <span className="text-[10px] text-slate-500 font-mono uppercase tracking-tighter">{user?.role}</span>
+                </div>
+                {user?.profile_photo ? (
+                  <img 
+                    src={`http://localhost:8000${user.profile_photo.startsWith('/') ? user.profile_photo : '/' + user.profile_photo}`} 
+                    alt="Avatar" 
+                    className="w-8 h-8 rounded-full object-cover border border-[#b026ff] shadow-[0_0_5px_rgba(176,38,255,0.3)]"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
+                    <span className="text-[10px]">👤</span>
+                  </div>
+                )}
               </div>
               <button onClick={logout} className="p-2 hover:bg-red-500/10 rounded-lg text-red-400 transition-colors text-xs font-bold">Çıkış</button>
             </div>
@@ -140,7 +155,7 @@ export const Dashboard: React.FC = () => {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-10">
         
         {activeTab === 'Gruplar' && (
           <div className="space-y-8">
@@ -189,101 +204,133 @@ export const Dashboard: React.FC = () => {
                     </div>
                   </div>
 
-                  <button 
-                    onClick={handleLeaveGroup}
-                    className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white px-5 py-2.5 rounded-2xl text-xs font-bold transition-all border border-red-500/30 flex items-center gap-2 self-start sm:self-center"
-                  >
-                    🚪 Gruptan Ayrıl
-                  </button>
-                </div>
-
-                {/* Alt Sekmeler (Sub-panel) */}
-                <div className="bg-slate-900/40 p-2 rounded-2xl border border-slate-800/50 flex flex-wrap gap-2">
-                  {[
-                    { id: 'Harcamalar', label: '💸 Harcamalar' },
-                    { id: 'Borç Durumu', label: '📊 Borç Durumu' },
-                    { id: 'Sohbet', label: '💬 Sohbet' },
-                    { id: 'Üyeler', label: '👥 Üyeler' },
-                    ...(activeGroupRole === 'GROUP_LEADER' ? [{ id: 'Yönetim', label: '⚙️ Yönetim' }] : [])
-                  ].map(sub => (
-                    <button
-                      key={sub.id}
-                      onClick={() => setActiveSubTab(sub.id as GroupSubTabType)}
-                      className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
-                        activeSubTab === sub.id 
-                          ? 'bg-[#00f0ff] text-slate-950 shadow-[0_0_15px_rgba(0,240,255,0.3)]'
-                          : 'bg-slate-800/50 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                      }`}
+                  {activeGroupRole !== 'GUEST' && (
+                    <button 
+                      onClick={handleLeaveGroup}
+                      className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white px-5 py-2.5 rounded-2xl text-xs font-bold transition-all border border-red-500/30 flex items-center gap-2 self-start sm:self-center"
                     >
-                      {sub.label}
+                      🚪 Gruptan Ayrıl
                     </button>
-                  ))}
+                  )}
                 </div>
 
-                {/* Onay Bekleniyor Mesajı */}
-                {!isActiveGroupApproved && (activeSubTab === 'Harcamalar' || activeSubTab === 'Borç Durumu' || activeSubTab === 'Sohbet') ? (
-                  <div className="flex flex-col items-center justify-center p-16 bg-slate-900/50 border border-slate-800 rounded-3xl text-center">
-                    <div className="w-20 h-20 bg-orange-500/10 rounded-full flex items-center justify-center mb-6 border border-orange-500/30">
-                      <span className="text-4xl">⏳</span>
+                {activeGroupRole === 'GUEST' ? (
+                  <div className="flex flex-col items-center justify-center p-20 bg-slate-900/50 border border-slate-800 rounded-3xl text-center shadow-2xl">
+                    <div className="w-24 h-24 bg-[#00f0ff]/10 rounded-full flex items-center justify-center mb-8 border border-[#00f0ff]/30 shadow-[0_0_20px_rgba(0,240,255,0.1)]">
+                      <span className="text-5xl">🤝</span>
                     </div>
-                    <h2 className="text-2xl font-bold text-slate-100 mb-2">Onay Bekleniyor</h2>
-                    <p className="text-slate-400 max-w-md mx-auto">
-                      Grup liderinin katılım isteğinizi onaylaması bekleniyor.
+                    <h2 className="text-3xl font-black text-white mb-4 tracking-tight">Bu Birime Katılın</h2>
+                    <p className="text-slate-400 max-w-lg mx-auto mb-10 text-lg leading-relaxed">
+                      Bu grubun harcamalarını görmek, borç durumunu takip etmek ve diğer üyelerle iletişime geçmek için katılım isteği göndermelisiniz.
                     </p>
+                    <button 
+                      onClick={async () => {
+                        try {
+                          await apiFetch(`/groups/${activeGroupId}/join`, { method: 'POST' });
+                          alert("Katılma isteği başarıyla gönderildi!");
+                          // Listeyi yenilemek ve seçimi sıfırlamak için
+                          setActiveGroupId(null);
+                          setRefreshTrigger(prev => prev + 1);
+                        } catch (err: any) {
+                          alert(err.message || "Hata oluştu.");
+                        }
+                      }}
+                      className="px-12 py-5 bg-gradient-to-r from-[#00f0ff] to-[#00c0cc] text-slate-950 rounded-2xl font-black text-lg uppercase tracking-widest hover:scale-105 transition-all shadow-[0_0_30px_rgba(0,240,255,0.4)]"
+                    >
+                      GRUBA KATILMA DAVETİ GÖNDER
+                    </button>
                   </div>
                 ) : (
-                  <div className="animate-fade-in-up">
-                    {activeSubTab === 'Harcamalar' && (
-                      <div className="flex flex-col w-full max-w-5xl mx-auto space-y-6">
-                        <div className="w-full flex justify-between items-center bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl">
-                          <div>
-                            <h2 className="text-2xl font-bold text-slate-100">Grup Harcamaları</h2>
-                            <p className="text-xs text-slate-500 mt-1 font-bold">{activeGroupName} grubuna ait harcamalar</p>
-                          </div>
-                          <button className="px-6 py-3 rounded-xl font-bold bg-[#b026ff] text-white hover:bg-[#c455ff] transition-all shadow-lg" onClick={() => setIsModalOpen(true)}>+ Harcama Ekle</button>
+                  <>
+                    {/* Alt Sekmeler (Sub-panel) */}
+                    <div className="bg-slate-900/40 p-2 rounded-2xl border border-slate-800/50 flex flex-wrap gap-2">
+                      {[
+                        { id: 'Harcamalar', label: '💸 Harcamalar' },
+                        { id: 'Borç Durumu', label: '📊 Borç Durumu' },
+                        { id: 'Sohbet', label: '💬 Sohbet' },
+                        { id: 'Üyeler', label: '👥 Üyeler' },
+                        ...(activeGroupRole === 'GROUP_LEADER' ? [{ id: 'Yönetim', label: '⚙️ Yönetim' }] : [])
+                      ].map(sub => (
+                        <button
+                          key={sub.id}
+                          onClick={() => setActiveSubTab(sub.id as GroupSubTabType)}
+                          className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                            activeSubTab === sub.id 
+                              ? 'bg-[#00f0ff] text-slate-950 shadow-[0_0_15px_rgba(0,240,255,0.3)]'
+                              : 'bg-slate-800/50 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                          }`}
+                        >
+                          {sub.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Onay Bekleniyor Mesajı */}
+                    {!isActiveGroupApproved && (activeSubTab === 'Harcamalar' || activeSubTab === 'Borç Durumu' || activeSubTab === 'Sohbet') ? (
+                      <div className="flex flex-col items-center justify-center p-16 bg-slate-900/50 border border-slate-800 rounded-3xl text-center">
+                        <div className="w-20 h-20 bg-orange-500/10 rounded-full flex items-center justify-center mb-6 border border-orange-500/30">
+                          <span className="text-4xl">⏳</span>
                         </div>
-                        <ExpenseList groupId={activeGroupId} refreshTrigger={refreshTrigger} currentUserId={user?.id} />
-                        {isModalOpen && (
-                          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
-                            <div className="relative w-full max-w-md">
-                              <ExpenseForm groupId={activeGroupId} onSuccess={() => { setIsModalOpen(false); setRefreshTrigger(prev => prev + 1); }} onCancel={() => setIsModalOpen(false)} />
+                        <h2 className="text-2xl font-bold text-slate-100 mb-2">Onay Bekleniyor</h2>
+                        <p className="text-slate-400 max-w-md mx-auto">
+                          Grup liderinin katılım isteğinizi onaylaması bekleniyor.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="animate-fade-in-up">
+                        {activeSubTab === 'Harcamalar' && (
+                          <div className="flex flex-col w-full max-w-7xl mx-auto space-y-6">
+                            <div className="w-full flex justify-between items-center bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl">
+                              <div>
+                                <h2 className="text-2xl font-bold text-slate-100">Grup Harcamaları</h2>
+                                <p className="text-xs text-slate-500 mt-1 font-bold">{activeGroupName} grubuna ait harcamalar</p>
+                              </div>
+                              <button className="px-6 py-3 rounded-xl font-bold bg-[#b026ff] text-white hover:bg-[#c455ff] transition-all shadow-lg" onClick={() => setIsModalOpen(true)}>+ Harcama Ekle</button>
                             </div>
+                            <ExpenseList groupId={activeGroupId} refreshTrigger={refreshTrigger} currentUserId={user?.id} />
+                            {isModalOpen && (
+                              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
+                                <div className="relative w-full max-w-md">
+                                  <ExpenseForm groupId={activeGroupId} onSuccess={() => { setIsModalOpen(false); setRefreshTrigger(prev => prev + 1); }} onCancel={() => setIsModalOpen(false)} />
+                                </div>
+                              </div>
+                            )}
                           </div>
+                        )}
+
+                        {activeSubTab === 'Borç Durumu' && (
+                          <div className="space-y-6">
+                            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl mb-6">
+                                <h2 className="text-2xl font-bold text-slate-100">Borç Durumu</h2>
+                                <p className="text-xs text-slate-500 mt-1 font-bold">{activeGroupName} için hesaplaşma detayları</p>
+                            </div>
+                            <DebtList groupId={activeGroupId} />
+                          </div>
+                        )}
+                        
+                        {activeSubTab === 'Sohbet' && (
+                          <div className="space-y-6">
+                            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl mb-6">
+                                <h2 className="text-2xl font-bold text-slate-100">Grup Sohbeti</h2>
+                                <p className="text-xs text-slate-500 mt-1 font-bold">{activeGroupName} grubu mesajlaşma alanı</p>
+                            </div>
+                            <GroupChat groupId={activeGroupId} currentUserId={user?.id} />
+                          </div>
+                        )}
+
+                        {activeSubTab === 'Üyeler' && (
+                          <GroupMembers groupId={activeGroupId} />
+                        )}
+
+                        {activeSubTab === 'Yönetim' && activeGroupRole === 'GROUP_LEADER' && (
+                          <GroupManagement 
+                            groupId={activeGroupId} 
+                            onUpdate={() => setRefreshTrigger(prev => prev + 1)} 
+                          />
                         )}
                       </div>
                     )}
-
-                    {activeSubTab === 'Borç Durumu' && (
-                      <div className="space-y-6">
-                        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl mb-6">
-                            <h2 className="text-2xl font-bold text-slate-100">Borç Durumu</h2>
-                            <p className="text-xs text-slate-500 mt-1 font-bold">{activeGroupName} grubu için hesaplaşma detayları</p>
-                        </div>
-                        <DebtList groupId={activeGroupId} />
-                      </div>
-                    )}
-                    
-                    {activeSubTab === 'Sohbet' && (
-                      <div className="space-y-6">
-                        <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl mb-6">
-                            <h2 className="text-2xl font-bold text-slate-100">Grup Sohbeti</h2>
-                            <p className="text-xs text-slate-500 mt-1 font-bold">{activeGroupName} grubu mesajlaşma alanı</p>
-                        </div>
-                        <GroupChat groupId={activeGroupId} currentUserId={user?.id} />
-                      </div>
-                    )}
-
-                    {activeSubTab === 'Üyeler' && (
-                      <GroupMembers groupId={activeGroupId} />
-                    )}
-
-                    {activeSubTab === 'Yönetim' && activeGroupRole === 'GROUP_LEADER' && (
-                      <GroupManagement 
-                        groupId={activeGroupId} 
-                        onUpdate={() => setRefreshTrigger(prev => prev + 1)} 
-                      />
-                    )}
-                  </div>
+                  </>
                 )}
               </div>
             )}
@@ -291,7 +338,7 @@ export const Dashboard: React.FC = () => {
         )}
 
         {activeTab === 'Sosyal' && <SocialList currentUserId={user?.id} activeGroupId={activeGroupId} />}
-        {activeTab === 'Profil' && <ProfileSettings />}
+        {activeTab === 'Profil' && <ProfileSettings onUpdate={fetchUser} />}
         {activeTab === 'Şikayet' && <ReportForm />}
         {activeTab === 'Admin' && user?.role?.toLowerCase() === 'admin' && <AdminPanel />}
         

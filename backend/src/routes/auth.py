@@ -157,6 +157,7 @@ def _build_user_response(user: User) -> dict:
         "surname": user.surname,
         "mail": user.mail,
         "phone_number": user.phone_number,
+        "profile_photo": user.profile_photo,
         "age": user.age,
         "role": user.role.value,
         "is_active": user.is_active,

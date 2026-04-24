@@ -96,7 +96,7 @@ export const SocialList: React.FC<{ currentUserId: number | null, activeGroupId:
   if (!currentUserId) return <p className="text-slate-400">Yükleniyor...</p>;
 
   return (
-    <div className="flex flex-col gap-6 animate-fade-in-up">
+    <div className="w-full max-w-7xl mx-auto flex flex-col gap-6 animate-fade-in-up">
       {/* Search and Follow */}
       <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl drop-shadow-glow-blue relative overflow-hidden">
         <h3 className="text-xl font-bold text-slate-100 mb-4">Kişi Bul & Takip Et</h3>

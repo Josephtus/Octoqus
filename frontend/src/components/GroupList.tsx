@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../utils/api';
+import { Pagination } from './common/Pagination';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface Group {
   id: number;
@@ -26,6 +28,9 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, activeGroup
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const limit = 12;
   
   const [joinStatus, setJoinStatus] = useState<JoinStatus | null>(null);
 
@@ -33,36 +38,35 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, activeGroup
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 500);
+    const timer = setTimeout(() => {
+      setPage(1);
+      setDebouncedSearch(searchTerm);
+    }, 500);
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  useEffect(() => {
-    const fetchGroups = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const response = await apiFetch(`/groups?q=${encodeURIComponent(debouncedSearch)}`);
-        const data = await response.json();
-        
-        // Backend dönüş formatına göre (dizi ya da obje içinde groups)
-        const groupsData = Array.isArray(data) ? data : data.groups || [];
-        setGroups(groupsData);
-      } catch (err: any) {
-        console.error('Gruplar yüklenirken hata:', err);
-        setError('Gruplar yüklenirken bir hata oluştu.');
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchGroups = async (pageNum: number = 1) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await apiFetch(`/groups?q=${encodeURIComponent(debouncedSearch)}&page=${pageNum}&limit=${limit}`);
+      const data = await response.json();
+      setGroups(data.groups || []);
+      setTotalCount(data.total_count || 0);
+    } catch (err: any) {
+      console.error('Gruplar yüklenirken hata:', err);
+      setError('Gruplar yüklenirken bir hata oluştu.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchGroups();
-  }, [refreshTrigger]);
+  useEffect(() => {
+    fetchGroups(page);
+  }, [debouncedSearch, page, refreshTrigger]);
 
   const handleJoin = async (groupId: number) => {
-    // Aynı anda sadece tek bir gruba işlem durumunu tutuyoruz
     setJoinStatus({ groupId, loading: true, message: '', isError: false });
-    
     try {
       await apiFetch(`/groups/${groupId}/join`, { method: 'POST' });
       setJoinStatus({ 
@@ -71,156 +75,138 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, activeGroup
         message: 'Katılma isteği gönderildi!', 
         isError: false 
       });
+      // Üyelik durumu değiştiği için listeyi yenile
+      fetchGroups(page);
     } catch (err: any) {
       setJoinStatus({ 
         groupId, 
         loading: false, 
-        message: err.message || 'Katılma isteği başarısız oldu.', 
+        message: err.message || 'Hata oluştu.', 
         isError: true 
       });
     }
   };
 
-  if (loading) {
-    return (
-      <div className="w-full py-16 flex justify-center items-center">
-        <div className="text-[#00f0ff] animate-pulse font-bold text-xl drop-shadow-glow-blue">
-          Gruplar Yükleniyor...
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="w-full p-4 rounded-lg bg-red-900/40 border border-red-500/50 text-red-200 text-center">
-        {error}
-      </div>
-    );
-  }
-
-  if (groups.length === 0) {
-    return (
-      <div className="w-full py-16 flex flex-col items-center justify-center bg-slate-900 border border-slate-800 border-dashed rounded-xl shadow-inner">
-        <svg className="w-16 h-16 text-slate-700 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-        </svg>
-        <p className="text-slate-400 text-lg font-medium">Sistemde henüz hiçbir grup bulunmuyor.</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="w-full max-w-6xl mx-auto p-4 sm:p-6 lg:p-8 animate-fade-in-up">
-      <div className="flex justify-between items-center mb-8">
-        <h3 className="text-3xl font-extrabold text-slate-100 tracking-tight">
-          Gruplar
-        </h3>
-        <div className="relative w-full max-w-md">
-          <input 
-            type="text" 
-            placeholder="Grup ara..." 
-            className="w-full bg-slate-900 border border-slate-800 rounded-2xl px-6 py-3 text-slate-200 focus:border-[#00f0ff] outline-none shadow-xl transition-all"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500">🔍</span>
+    <div className="flex flex-col gap-6">
+      <div className="relative group max-w-2xl mx-auto w-full">
+        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+          <span className="text-xl">🔍</span>
         </div>
+        <input
+          type="text"
+          placeholder="Grup ismine göre ara..."
+          className="block w-full pl-12 pr-4 py-4 bg-slate-900 border border-slate-800 rounded-2xl text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-[#00f0ff]/30 focus:border-[#00f0ff] transition-all shadow-2xl"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
       </div>
-      
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {groups.map((group) => {
-          const status = joinStatus?.groupId === group.id ? joinStatus : null;
-          
-          return (
-            <div 
-              key={group.id} 
-              className={`flex flex-col p-6 bg-slate-900 border ${activeGroupId === group.id ? 'border-[#00f0ff] shadow-[0_0_15px_rgba(0,240,255,0.2)]' : 'border-slate-800 hover:border-slate-700 hover:shadow-[0_4px_25px_rgba(0,240,255,0.08)]'} rounded-2xl transition-all h-full relative group`}
-            >
-              <div className="flex-1 cursor-pointer" onClick={() => onSelectGroup && onSelectGroup(group.id, group.name, group.role || 'USER', group.is_approved || false)}>
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className="text-2xl font-bold text-[#00f0ff] drop-shadow-glow-blue">
-                    {group.name}
-                  </h4>
-                  {group.role && (
-                    <span className={`text-[10px] px-2 py-0.5 rounded font-black uppercase tracking-tighter ${group.role === 'GROUP_LEADER' ? 'bg-amber-500/20 text-amber-500' : 'bg-blue-500/20 text-blue-500'}`}>
-                      {group.role === 'GROUP_LEADER' ? 'LİDER' : 'ÜYE'}
-                    </span>
-                  )}
-                </div>
-                
-                <div className="flex gap-2 mb-3">
-                  {activeGroupId === group.id && (
-                    <span className="text-[10px] bg-[#00f0ff]/20 text-[#00f0ff] px-2 py-0.5 rounded-full font-bold">Aktif</span>
-                  )}
-                  {group.role && (
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${group.is_approved ? 'bg-emerald-500/20 text-emerald-500' : 'bg-orange-500/20 text-orange-500'}`}>
-                      {group.is_approved ? 'Onaylı' : 'Onay Bekliyor'}
-                    </span>
-                  )}
-                </div>
 
-                {group.content ? (
-                  <p className="text-slate-400 text-sm leading-relaxed mb-4 line-clamp-3">
-                    {group.content}
-                  </p>
-                ) : (
-                  <p className="text-slate-600 text-sm italic mb-4">Açıklama bulunmuyor.</p>
-                )}
+      <div className="min-h-[500px] flex flex-col">
+        {loading ? (
+          <div className="flex-1 flex flex-col justify-center items-center py-20 gap-4">
+            <div className="w-12 h-12 border-4 border-[#00f0ff]/20 border-t-[#00f0ff] rounded-full animate-spin"></div>
+            <div className="text-[#00f0ff] font-bold tracking-widest animate-pulse uppercase text-xs">Ağ taranıyor...</div>
+          </div>
+        ) : error ? (
+          <div className="p-6 rounded-2xl bg-red-900/20 border border-red-500/30 text-red-400 text-center font-bold">
+            {error}
+          </div>
+        ) : (
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={page + debouncedSearch}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+              className="flex-1"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {groups.map((group) => {
+                  const isSelected = activeGroupId === group.id;
+                  const isMember = group.role !== undefined;
+                  const isLeader = group.role === 'GROUP_LEADER';
+                  
+                  return (
+                    <motion.div 
+                      key={group.id}
+                      whileHover={{ scale: 1.02, translateY: -5 }}
+                      className={`relative p-6 rounded-3xl border transition-all cursor-pointer flex flex-col h-full overflow-hidden ${
+                        isSelected 
+                          ? 'bg-slate-900 border-[#00f0ff] shadow-[0_0_30px_rgba(0,240,255,0.15)]' 
+                          : 'bg-slate-900/40 border-slate-800 hover:border-slate-700 hover:bg-slate-900/60'
+                      }`}
+                      onClick={() => onSelectGroup?.(group.id, group.name, group.role || 'GUEST', group.is_approved || false)}
+                    >
+                      {isMember && (
+                        <div className={`absolute top-0 right-0 px-3 py-1 text-[9px] font-black uppercase tracking-tighter rounded-bl-xl ${
+                          isLeader ? 'bg-amber-500 text-slate-950' : 'bg-[#00f0ff] text-slate-950'
+                        }`}>
+                          {isLeader ? 'LİDER' : 'ÜYE'}
+                        </div>
+                      )}
+                      
+                      <div className="mb-4">
+                        <h3 className="text-xl font-black text-slate-100 mb-2 truncate group-hover:text-[#00f0ff] transition-colors leading-tight">
+                          {group.name}
+                        </h3>
+                        <div className="flex gap-2">
+                          <span className="text-[10px] text-slate-600 font-mono">ID: #{group.id}</span>
+                          {!group.is_approved && isMember && (
+                            <span className="text-[10px] text-orange-400 font-bold uppercase tracking-widest">● Onay Bekliyor</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <p className="text-sm text-slate-400 mb-8 flex-1 line-clamp-3 italic leading-relaxed">
+                        {group.content || "Bu operasyonel birim için görev tanımı belirtilmemiş."}
+                      </p>
+                      
+                      <div className="mt-auto">
+                        {!isMember ? (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleJoin(group.id); }}
+                            disabled={joinStatus?.groupId === group.id && joinStatus.loading}
+                            className="w-full py-3 bg-slate-800 hover:bg-[#00f0ff] text-slate-300 hover:text-slate-950 rounded-2xl font-black text-xs uppercase tracking-widest transition-all border border-slate-700 hover:border-[#00f0ff]"
+                          >
+                            {joinStatus?.groupId === group.id && joinStatus.loading ? 'İŞLENİYOR...' : 'KATILMA TALEBİ'}
+                          </button>
+                        ) : (
+                          <div className={`w-full text-center py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all ${
+                            isSelected 
+                            ? 'bg-[#00f0ff]/10 border-[#00f0ff]/30 text-[#00f0ff]' 
+                            : 'bg-slate-950/50 border-slate-800 text-slate-500'
+                          }`}>
+                            {isSelected ? 'AKTİF BİRİM' : 'GÖRÜNTÜLE →'}
+                          </div>
+                        )}
+                      </div>
+
+                      {isSelected && (
+                        <div className="absolute bottom-0 left-0 w-full h-1 bg-[#00f0ff] shadow-[0_0_10px_#00f0ff]"></div>
+                      )}
+                    </motion.div>
+                  );
+                })}
               </div>
               
-              <div className="mt-4 pt-5 border-t border-slate-800">
-                {status && status.message && (
-                  <div 
-                    className={`text-sm mb-4 text-center p-2.5 rounded-lg font-medium animate-fade-in-up ${
-                      status.isError 
-                        ? 'bg-red-900/30 text-red-400 border border-red-800' 
-                        : 'bg-emerald-900/30 text-emerald-400 border border-emerald-800'
-                    }`}
-                  >
-                    {status.message}
-                  </div>
-                )}
-                
-                {!group.role ? (
-                  <button
-                    onClick={() => handleJoin(group.id)}
-                    disabled={status?.loading}
-                    className="w-full py-3 rounded-xl font-bold bg-slate-800 text-[#00f0ff] hover:bg-[#00f0ff] hover:text-slate-900 transition-all border border-[#00f0ff]/30 hover:shadow-[0_0_15px_rgba(0,240,255,0.4)] disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {status?.loading ? 'İstek Gönderiliyor...' : 'Gruba Katıl'}
-                  </button>
-                ) : (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => onSelectGroup && onSelectGroup(group.id, group.name, group.role || 'USER', group.is_approved || false)}
-                      className="flex-1 py-3 rounded-xl font-bold bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/30 hover:bg-[#00f0ff] hover:text-slate-900 transition-all"
-                    >
-                      Gruba Git
-                    </button>
-                    <button
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        if (window.confirm(`${group.name} grubundan ayrılmak istediğinize emin misiniz?`)) {
-                          try {
-                            await apiFetch(`/groups/${group.id}/leave`, { method: 'POST' });
-                            window.location.reload();
-                          } catch (err) {
-                            alert("Ayrılma işlemi başarısız.");
-                          }
-                        }
-                      }}
-                      className="p-3 rounded-xl bg-red-500/10 text-red-500 border border-red-500/30 hover:bg-red-500 hover:text-white transition-all"
-                      title="Gruptan Ayrıl"
-                    >
-                      🚪
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
+              {groups.length === 0 && !loading && (
+                <div className="flex-1 flex flex-col items-center justify-center py-20 text-slate-600">
+                  <span className="text-4xl mb-4 opacity-20">🚫</span>
+                  <p className="text-lg italic font-medium">Birim bulunamadı veya erişim yetkiniz yok.</p>
+                </div>
+              )}
+
+              <Pagination 
+                currentPage={page}
+                totalCount={totalCount}
+                limit={limit}
+                onPageChange={setPage}
+              />
+            </motion.div>
+          </AnimatePresence>
+        )}
       </div>
     </div>
   );

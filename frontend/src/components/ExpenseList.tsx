@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../utils/api';
 import { ExpenseCard } from './ExpenseCard';
+import { Pagination } from './common/Pagination';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface ExpenseListProps {
   groupId: number;
@@ -21,19 +23,21 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const limit = 20;
 
-  // Düzenleme state'leri
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [editLoading, setEditLoading] = useState(false);
 
-  const fetchExpenses = async () => {
+  const fetchExpenses = async (pageNum: number = 1) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await apiFetch(`/expenses/${groupId}`);
+      const response = await apiFetch(`/expenses/${groupId}?page=${pageNum}&limit=${limit}`);
       const data = await response.json();
-      const expenseData = Array.isArray(data) ? data : data.expenses || [];
-      setExpenses(expenseData);
+      setExpenses(data.expenses || []);
+      setTotalCount(data.total_count || 0);
     } catch (err: any) {
       console.error('Harcamalar yüklenirken hata:', err);
       setError('Harcamalar yüklenirken bir hata oluştu.');
@@ -43,16 +47,21 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
   };
 
   useEffect(() => {
-    fetchExpenses();
+    setPage(1);
+    fetchExpenses(1);
   }, [groupId, refreshTrigger]);
+
+  useEffect(() => {
+    fetchExpenses(page);
+  }, [page]);
 
   const handleDelete = async (expenseId: number) => {
     if (!window.confirm("Bu harcamayı silmek istediğinize emin misiniz?")) return;
     try {
       await apiFetch(`/expenses/${groupId}/${expenseId}`, { method: 'DELETE' });
-      fetchExpenses();
-    } catch (err) {
-      alert("Harcama silinemedi");
+      fetchExpenses(page);
+    } catch (err: any) {
+      alert(err.message || "Silme işlemi başarısız.");
     }
   };
 
@@ -70,124 +79,126 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
         })
       });
       setEditingExpense(null);
-      fetchExpenses();
-    } catch (err) {
-      alert("Güncelleme başarısız");
+      fetchExpenses(page);
+    } catch (err: any) {
+      alert(err.message || "Güncelleme başarısız.");
     } finally {
       setEditLoading(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="w-full py-12 flex justify-center">
-        <div className="text-[#00f0ff] animate-pulse font-medium text-lg drop-shadow-glow-blue">Harcamalar yükleniyor...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="w-full p-4 rounded-lg bg-red-900/40 border border-red-500/50 text-red-200 text-center">
-        {error}
-      </div>
-    );
-  }
-
-  if (expenses.length === 0) {
-    return (
-      <div className="w-full py-16 flex flex-col items-center justify-center bg-slate-800/30 border border-slate-700 border-dashed rounded-xl shadow-inner">
-        <svg className="w-16 h-16 text-slate-600 mb-4 drop-shadow-md" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-        </svg>
-        <p className="text-slate-300 text-lg font-medium">Henüz harcama eklenmemiş</p>
-        <p className="text-slate-500 text-sm mt-1">Bu gruba yapılan ilk harcamayı siz ekleyin.</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="w-full space-y-6 relative">
-      {/* Borç Optimizasyonu Bilgi Kartı */}
-      <div className="bg-slate-900/40 border border-slate-800/60 p-4 rounded-2xl flex items-center justify-between group hover:border-[#00f0ff]/30 transition-all">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-[#00f0ff]/10 rounded-lg text-[#00f0ff]">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-sm font-bold text-slate-200">Akıllı Borç Hesaplama Aktif</p>
-            <p className="text-[10px] text-slate-500 font-medium italic">Kimin kime ne kadar ödeyeceğini "Borç Durumu" sekmesinden anlık olarak takip edebilirsiniz.</p>
-          </div>
-        </div>
+    <div className="flex flex-col gap-6">
+      <div className="flex justify-between items-center">
+        <h3 className="text-xl font-black text-slate-100 flex items-center gap-3">
+          <span className="w-2 h-6 bg-[#00f0ff] rounded-full"></span>
+          Harcama Dökümü
+          <span className="text-xs bg-slate-800 text-slate-500 px-2 py-1 rounded-lg font-mono">
+            {totalCount} Kayıt
+          </span>
+        </h3>
       </div>
 
-      <div className="space-y-4">
-        {expenses.map((expense) => (
-          <ExpenseCard 
-            key={expense.id} 
-            expense={expense} 
-            currentUserId={currentUserId}
-            onDelete={handleDelete}
-            onEdit={setEditingExpense}
-          />
-        ))}
+      <div className="min-h-[500px] flex flex-col">
+        {loading ? (
+          <div className="flex-1 flex flex-col justify-center items-center py-20 gap-4">
+            <div className="w-10 h-10 border-4 border-[#00f0ff]/20 border-t-[#00f0ff] rounded-full animate-spin"></div>
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest animate-pulse">Veri Akışı Sağlanıyor...</p>
+          </div>
+        ) : error ? (
+          <div className="p-6 rounded-2xl bg-red-900/20 border border-red-500/30 text-red-400 text-center font-bold">
+            {error}
+          </div>
+        ) : (
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={page}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.2 }}
+              className="flex-1 flex flex-col"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 h-fit">
+                {expenses.map((expense) => (
+                  <ExpenseCard 
+                    key={expense.id} 
+                    expense={expense} 
+                    onDelete={() => handleDelete(expense.id)}
+                    onEdit={() => setEditingExpense(expense)}
+                    isOwner={currentUserId === expense.added_by}
+                  />
+                ))}
+              </div>
+
+              {expenses.length === 0 && (
+                <div className="flex-1 flex flex-col items-center justify-center py-20 text-slate-600">
+                  <p className="italic">Henüz harcama kaydı bulunmuyor.</p>
+                </div>
+              )}
+
+              <Pagination 
+                currentPage={page}
+                totalCount={totalCount}
+                limit={limit}
+                onPageChange={setPage}
+              />
+            </motion.div>
+          </AnimatePresence>
+        )}
       </div>
 
       {/* Düzenleme Modalı */}
       {editingExpense && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-scale-in">
-            <div className="p-6 border-b border-slate-800 flex justify-between items-center">
-              <h3 className="text-xl font-bold text-white">Harcamayı Düzenle</h3>
-              <button onClick={() => setEditingExpense(null)} className="text-slate-400 hover:text-white transition-colors">✕</button>
-            </div>
-            <form onSubmit={handleUpdate} className="p-6 space-y-4">
+          <div className="bg-slate-900 border border-slate-800 p-8 rounded-3xl w-full max-w-md shadow-2xl relative">
+            <div className="absolute top-0 left-0 w-full h-1 bg-[#00f0ff]"></div>
+            <h4 className="text-2xl font-black text-[#00f0ff] mb-6">Harcamayı Düzenle</h4>
+            <form onSubmit={handleUpdate} className="space-y-5">
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Tutar (₺)</label>
+                <label className="block text-xs font-black text-slate-500 uppercase mb-2">Miktar</label>
                 <input 
                   type="number" 
                   step="0.01"
-                  required
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-[#00f0ff] font-bold focus:border-[#00f0ff] outline-none"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 focus:border-[#00f0ff] outline-none transition-all"
                   value={editingExpense.amount}
-                  onChange={(e) => setEditingExpense({...editingExpense, amount: Number(e.target.value)})}
+                  onChange={(e) => setEditingExpense({...editingExpense, amount: parseFloat(e.target.value)})}
+                  required
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Açıklama</label>
-                <input 
-                  type="text" 
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 focus:border-[#00f0ff] outline-none"
-                  value={editingExpense.content || ''}
-                  onChange={(e) => setEditingExpense({...editingExpense, content: e.target.value})}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Tarih</label>
+                <label className="block text-xs font-black text-slate-500 uppercase mb-2">Tarih</label>
                 <input 
                   type="date" 
-                  required
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 focus:border-[#00f0ff] outline-none"
-                  value={editingExpense.date.split('T')[0]}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 focus:border-[#00f0ff] outline-none transition-all"
+                  value={editingExpense.date}
                   onChange={(e) => setEditingExpense({...editingExpense, date: e.target.value})}
+                  required
                 />
               </div>
-              <div className="pt-4 flex gap-3">
-                <button 
-                  type="submit" 
-                  disabled={editLoading}
-                  className="flex-1 bg-[#00f0ff] text-slate-900 font-bold py-3 rounded-xl hover:bg-[#4dffff] transition-all disabled:opacity-50"
-                >
-                  {editLoading ? 'Güncelleniyor...' : 'Güncelle'}
-                </button>
+              <div>
+                <label className="block text-xs font-black text-slate-500 uppercase mb-2">Açıklama</label>
+                <textarea 
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 focus:border-[#00f0ff] outline-none transition-all"
+                  value={editingExpense.content}
+                  onChange={(e) => setEditingExpense({...editingExpense, content: e.target.value})}
+                  rows={3}
+                />
+              </div>
+              <div className="flex gap-4 pt-4">
                 <button 
                   type="button" 
                   onClick={() => setEditingExpense(null)}
-                  className="flex-1 bg-slate-800 text-slate-300 font-bold py-3 rounded-xl hover:bg-slate-700 transition-all"
+                  className="flex-1 py-3 bg-slate-800 text-slate-400 rounded-2xl font-bold hover:bg-slate-700 transition-all"
                 >
                   İptal
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={editLoading}
+                  className="flex-1 py-3 bg-[#00f0ff] text-slate-950 rounded-2xl font-black shadow-[0_0_20px_#00f0ff44] hover:bg-[#00c0cc] transition-all disabled:opacity-50"
+                >
+                  {editLoading ? 'Güncelleniyor...' : 'KAYDET'}
                 </button>
               </div>
             </form>

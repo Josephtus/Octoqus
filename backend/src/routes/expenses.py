@@ -245,8 +245,15 @@ async def list_expenses(request: Request, group_id: int) -> HTTPResponse:
     offset = (page - 1) * limit
 
     async with get_session() as session:
+        from sqlalchemy import func
         await _get_active_group(session, group_id)
         await _require_approved_member(session, group_id, user_id)
+
+        # Toplam sayıyı al
+        count_stmt = select(func.count(Expense.id)).where(
+            Expense.group_id == group_id, Expense.is_deleted.is_(False)
+        )
+        total_count = await session.scalar(count_stmt) or 0
 
         stmt = (
             select(Expense)
@@ -258,10 +265,11 @@ async def list_expenses(request: Request, group_id: int) -> HTTPResponse:
         expenses = list(await session.scalars(stmt))
 
         return sanic_json({
-            "page":     page,
-            "limit":    limit,
-            "count":    len(expenses),
-            "expenses": [_build_expense(e) for e in expenses],
+            "page":         page,
+            "limit":        limit,
+            "total_count":  total_count,
+            "count":        len(expenses),
+            "expenses":     [_build_expense(e) for e in expenses],
         }, status=200)
 
 

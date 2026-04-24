@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch } from '../../utils/api';
+import { Pagination } from '../common/Pagination';
 
 interface GroupInfo {
   id: number;
@@ -25,6 +27,10 @@ interface AdminUser {
 export const AdminUsers: React.FC = () => {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const limit = 20;
+
   const [viewingDetails, setViewingDetails] = useState<number | null>(null);
   const [details, setDetails] = useState<{
     user: AdminUser;
@@ -36,12 +42,16 @@ export const AdminUsers: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
 
-  const fetchUsers = async (query: string = '') => {
+  const [sortField, setSortField] = useState('id');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  const fetchUsers = async (query: string = '', pageNum: number = 1, sort: string = sortField, order: string = sortOrder) => {
     try {
       setLoading(true);
-      const res = await apiFetch(`/admin/users?q=${encodeURIComponent(query)}`);
+      const res = await apiFetch(`/admin/users?q=${encodeURIComponent(query)}&page=${pageNum}&limit=${limit}&sort=${sort}&order=${order}`);
       const data = await res.json();
       setUsers(data.users || []);
+      setTotalCount(data.total_count || 0);
     } catch (err) {
       console.error("Kullanıcılar yüklenemedi");
     } finally {
@@ -49,13 +59,34 @@ export const AdminUsers: React.FC = () => {
     }
   };
 
+  const handleSort = (field: string) => {
+    const newOrder = sortField === field && sortOrder === 'asc' ? 'desc' : 'asc';
+    setSortField(field);
+    setSortOrder(newOrder);
+    setPage(1);
+  };
+
   useEffect(() => {
-    // Debounce search
     const timer = setTimeout(() => {
-      fetchUsers(searchTerm);
-    }, 500);
+      fetchUsers(searchTerm, page, sortField, sortOrder);
+    }, 300);
     return () => clearTimeout(timer);
-  }, [searchTerm]);
+  }, [searchTerm, page, sortField, sortOrder]);
+
+  const SortHeader: React.FC<{ label: string; field: string }> = ({ label, field }) => (
+    <th 
+      className="py-4 px-3 cursor-pointer hover:text-[#00f0ff] transition-colors group/header whitespace-nowrap"
+      onClick={() => handleSort(field)}
+    >
+      <div className="flex items-center gap-1.5">
+        <span>{label}</span>
+        <div className="flex flex-col text-[8px] opacity-30 group-hover/header:opacity-100">
+          <span className={sortField === field && sortOrder === 'asc' ? 'text-[#00f0ff]' : ''}>▲</span>
+          <span className={sortField === field && sortOrder === 'desc' ? 'text-[#00f0ff]' : ''}>▼</span>
+        </div>
+      </div>
+    </th>
+  );
 
   const toggleUserStatus = async (userId: number, currentStatus: boolean) => {
     try {
@@ -63,7 +94,7 @@ export const AdminUsers: React.FC = () => {
         method: 'PUT',
         body: JSON.stringify({ is_active: !currentStatus })
       });
-      fetchUsers(searchTerm);
+      fetchUsers(searchTerm, page, sortField, sortOrder);
     } catch (err) {
       alert("Durum güncellenemedi");
     }
@@ -84,7 +115,7 @@ export const AdminUsers: React.FC = () => {
         })
       });
       setEditingUser(null);
-      fetchUsers(searchTerm);
+      fetchUsers(searchTerm, page, sortField, sortOrder);
     } catch (err) {
       alert("Güncelleme başarısız");
     }
@@ -124,7 +155,10 @@ export const AdminUsers: React.FC = () => {
             placeholder="İsim, Soyisim, Email veya Telefon..."
             className="bg-slate-950 border border-slate-800 rounded-xl px-10 py-2.5 text-sm w-80 focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] outline-none transition-all"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setPage(1);
+            }}
           />
           <svg className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -132,113 +166,136 @@ export const AdminUsers: React.FC = () => {
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex justify-center items-center py-20">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#00f0ff]"></div>
-        </div>
-      ) : (
-        <div className="bg-slate-900/30 border border-slate-800 rounded-2xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-800/50 text-slate-400 text-[10px] uppercase tracking-widest font-black">
-                  <th className="py-4 px-4">ID</th>
-                  <th className="py-4 px-4">Kullanıcı & İletişim</th>
-                  <th className="py-4 px-4">Doğum Tarihi</th>
-                  <th className="py-4 px-4">Üyelikler</th>
-                  <th className="py-4 px-4">Liderlik</th>
-                  <th className="py-4 px-4">Rol / Durum</th>
-                  <th className="py-4 px-4 text-right">İşlemler</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/50">
-                {users.map(user => (
-                  <tr key={user.id} className="hover:bg-slate-800/30 transition-colors group">
-                    <td className="py-4 px-4 text-slate-500 font-mono text-xs">#{user.id}</td>
-                    <td className="py-4 px-4">
-                      <div className="font-bold text-slate-200">{user.name} {user.surname}</div>
-                      <div className="text-[11px] text-[#00f0ff] font-medium mt-0.5">{user.mail}</div>
-                      <div className="text-[11px] text-slate-500 mt-0.5">{user.phone_number}</div>
-                    </td>
-                    <td className="py-4 px-4">
-                      <div className="text-xs text-slate-300 font-bold">{user.birthday ? new Date(user.birthday).toLocaleDateString() : '-'}</div>
-                      <div className="text-[10px] text-slate-500">{user.age} Yaşında</div>
-                    </td>
-                    <td className="py-4 px-4">
-                      {user.joined_groups && user.joined_groups.length > 0 ? (
-                        <div className="flex flex-wrap gap-1 max-w-[150px]">
-                          {user.joined_groups.map(g => (
-                            <span key={g.id} className="bg-blue-500/10 text-blue-400 text-[9px] px-1.5 py-0.5 rounded border border-blue-500/20" title={g.name}>
-                              {g.name}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-slate-600 text-[10px] italic">Yok</span>
-                      )}
-                    </td>
-                    <td className="py-4 px-4">
-                      {user.led_groups && user.led_groups.length > 0 ? (
-                        <div className="flex flex-wrap gap-1 max-w-[150px]">
-                          {user.led_groups.map(g => (
-                            <span key={g.id} className="bg-amber-500/10 text-amber-400 text-[9px] px-1.5 py-0.5 rounded border border-amber-500/20" title={g.name}>
-                              {g.name}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-slate-600 text-[10px] italic">Yok</span>
-                      )}
-                    </td>
-                    <td className="py-4 px-4 space-y-2">
-                      <div>
-                        <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
-                          user.role?.toLowerCase() === 'admin' ? 'bg-red-500/20 text-red-400' : 'bg-slate-700 text-slate-400'
-                        }`}>
-                          {user.role}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className={`w-2 h-2 rounded-full ${user.is_active ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-red-500'}`}></span>
-                        <span className="text-[10px] text-slate-400">{user.is_active ? 'Aktif' : 'Engelli'}</span>
-                      </div>
-                    </td>
-                    <td className="py-4 px-4 text-right">
-                      <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={() => setViewingDetails(user.id)}
-                          className="text-[10px] font-bold bg-slate-800 text-[#00f0ff] px-3 py-1.5 rounded-lg hover:bg-[#00f0ff]/20"
-                        >
-                          Detaylar
-                        </button>
-                        <button 
-                          onClick={() => toggleUserStatus(user.id, user.is_active)}
-                          className={`text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all ${
-                            user.is_active ? 'bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white' : 'bg-green-500/10 text-green-400 hover:bg-green-500 hover:text-white'
-                          }`}
-                        >
-                          {user.is_active ? 'Engelle' : 'Kaldır'}
-                        </button>
-                        <button 
-                          onClick={() => setEditingUser(user)}
-                          className="text-[10px] font-bold bg-slate-800 text-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-700"
-                        >
-                          Düzenle
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {users.length === 0 && (
-              <div className="text-center py-12">
-                <p className="text-slate-500 italic">Kullanıcı bulunamadı.</p>
-              </div>
-            )}
+      <div className="bg-slate-900/30 border border-slate-800 rounded-2xl overflow-hidden min-h-[600px] flex flex-col shadow-inner">
+        {loading ? (
+          <div className="flex-1 flex flex-col justify-center items-center py-20 gap-4">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#00f0ff]"></div>
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest animate-pulse">Kullanıcı Veritabanı Erişiliyor...</span>
           </div>
-        </div>
-      )}
+        ) : (
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={page + searchTerm + sortField + sortOrder}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.2 }}
+              className="flex-1 flex flex-col"
+            >
+              <div className="overflow-x-auto flex-1">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-800/50 text-slate-400 text-[10px] uppercase tracking-widest font-black">
+                      <SortHeader label="ID" field="id" />
+                      <SortHeader label="İsim" field="name" />
+                      <SortHeader label="Soyisim" field="surname" />
+                      <SortHeader label="Email" field="mail" />
+                      <SortHeader label="Telefon" field="phone_number" />
+                      <SortHeader label="Doğum Tarihi" field="birthday" />
+                      <th className="py-4 px-3">Üyelikler</th>
+                      <th className="py-4 px-3">Liderlik</th>
+                      <SortHeader label="Rol" field="role" />
+                      <SortHeader label="Durum" field="is_active" />
+                      <th className="py-4 px-3 text-right">İşlemler</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/50">
+                    {users.map(user => (
+                      <tr key={user.id} className="hover:bg-slate-800/30 transition-colors group">
+                        <td className="py-4 px-3 text-slate-500 font-mono text-xs">#{user.id}</td>
+                        <td className="py-4 px-3 text-slate-100 font-bold text-xs">{user.name}</td>
+                        <td className="py-4 px-3 text-slate-100 font-bold text-xs">{user.surname}</td>
+                        <td className="py-4 px-3 text-slate-400 text-[11px] font-medium">{user.mail}</td>
+                        <td className="py-4 px-3 text-slate-500 text-[11px]">{user.phone_number}</td>
+                        <td className="py-4 px-3 text-slate-400 text-[11px] whitespace-nowrap">
+                          {user.birthday ? new Date(user.birthday).toLocaleDateString() : '-'}
+                          {user.age ? <span className="ml-1 text-slate-600">({user.age} yaş)</span> : null}
+                        </td>
+                        <td className="py-4 px-3">
+                          <div className="flex flex-wrap gap-1 max-w-[120px]">
+                            {user.joined_groups?.map(g => (
+                              <span key={g.id} className="px-1.5 py-0.5 bg-slate-800 text-slate-400 rounded text-[9px] border border-slate-700">
+                                {g.name}
+                              </span>
+                            )) || <span className="text-slate-600 text-[10px] italic">Yok</span>}
+                          </div>
+                        </td>
+                        <td className="py-4 px-3">
+                          <div className="flex flex-wrap gap-1 max-w-[120px]">
+                            {user.led_groups?.map(g => (
+                              <span key={g.id} className="px-1.5 py-0.5 bg-purple-500/10 text-purple-400 rounded text-[9px] border border-purple-500/20">
+                                {g.name}
+                              </span>
+                            )) || <span className="text-slate-600 text-[10px] italic">Yok</span>}
+                          </div>
+                        </td>
+                        <td className="py-4 px-3">
+                          <span className={`text-[9px] font-black px-2 py-0.5 rounded w-fit ${
+                            user.role === 'ADMIN' ? 'bg-[#00f0ff]/10 text-[#00f0ff]' :
+                            user.role === 'GROUP_LEADER' ? 'bg-purple-500/10 text-purple-400' :
+                            'bg-slate-700 text-slate-400'
+                          }`}>
+                            {user.role}
+                          </span>
+                        </td>
+                        <td className="py-4 px-3">
+                          <span className={`text-[9px] font-black px-2 py-0.5 rounded w-fit ${
+                            user.is_active ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
+                          }`}>
+                            {user.is_active ? 'AKTİF' : 'ENGELİ'}
+                          </span>
+                        </td>
+                        <td className="py-4 px-3 text-right">
+                          <div className="flex justify-end gap-1.5">
+                            <button 
+                              onClick={() => setViewingDetails(user.id)}
+                              className="p-2 bg-slate-800 text-slate-400 rounded-lg hover:bg-[#00f0ff] hover:text-slate-950 transition-all"
+                              title="Detaylar"
+                            >
+                              🔍
+                            </button>
+                            <button 
+                              onClick={() => setEditingUser(user)}
+                              className="p-2 bg-slate-800 text-slate-400 rounded-lg hover:bg-[#b026ff] hover:text-white transition-all"
+                              title="Düzenle"
+                            >
+                              ✏️
+                            </button>
+                            {user.role !== 'ADMIN' && (
+                              <button 
+                                onClick={() => toggleUserStatus(user.id, user.is_active)}
+                                className={`p-2 rounded-lg transition-all ${
+                                  user.is_active 
+                                  ? 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white' 
+                                  : 'bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-white'
+                                }`}
+                                title={user.is_active ? "Engelle" : "Engeli Kaldır"}
+                              >
+                                {user.is_active ? '🚫' : '✅'}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {users.length === 0 && (
+                  <div className="text-center py-12">
+                    <p className="text-slate-500 italic">Kullanıcı bulunamadı.</p>
+                  </div>
+                )}
+              </div>
+              <Pagination 
+                currentPage={page}
+                totalCount={totalCount}
+                limit={limit}
+                onPageChange={setPage}
+              />
+            </motion.div>
+          </AnimatePresence>
+        )}
+      </div>
 
       {/* Detaylar Modalı */}
       {viewingDetails && (
@@ -263,7 +320,6 @@ export const AdminUsers: React.FC = () => {
                 </div>
               ) : details && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                  {/* Sol Kolon: Temel Bilgiler */}
                   <div className="space-y-6">
                     <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800">
                       <h5 className="text-xs font-black text-[#00f0ff] uppercase tracking-widest mb-4">Profil Bilgileri</h5>
@@ -273,136 +329,96 @@ export const AdminUsers: React.FC = () => {
                           <div className="text-slate-200 text-sm font-bold">{new Date(details.user.created_at).toLocaleString()}</div>
                         </div>
                         <div>
-                          <label className="text-[10px] text-slate-500 font-bold uppercase block">İletişim</label>
-                          <div className="text-slate-200 text-sm">{details.user.mail}</div>
-                          <div className="text-slate-400 text-xs mt-1">{details.user.phone_number}</div>
+                          <label className="text-[10px] text-slate-500 font-bold uppercase block">Son Durum</label>
+                          <div className={`text-sm font-bold ${details.user.is_active ? 'text-green-400' : 'text-red-400'}`}>
+                            {details.user.is_active ? 'Hesap Aktif' : 'Hesap Engelli'}
+                          </div>
                         </div>
-                        <div>
-                          <label className="text-[10px] text-slate-500 font-bold uppercase block">Doğum Tarihi / Yaş</label>
-                          <div className="text-slate-200 text-sm">{new Date(details.user.birthday!).toLocaleDateString()} ({details.user.age} yaşında)</div>
-                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="lg:col-span-2 space-y-6">
+                    <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800">
+                      <h5 className="text-xs font-black text-[#00f0ff] uppercase tracking-widest mb-4">Grup Üyelikleri</h5>
+                      <div className="space-y-3">
+                        {details.memberships.map((m: any) => (
+                          <div key={m.group_id} className="flex justify-between items-center p-3 bg-slate-900 rounded-xl border border-slate-800">
+                            <div>
+                              <span className="text-slate-200 font-bold text-sm block">{m.group_name}</span>
+                              <span className="text-[10px] text-slate-500">Katılım: {new Date(m.joined_at).toLocaleDateString()}</span>
+                            </div>
+                            <span className={`text-[9px] font-black px-2 py-1 rounded ${m.role === 'GROUP_LEADER' ? 'bg-purple-500/20 text-purple-400' : 'bg-slate-800 text-slate-400'}`}>
+                              {m.role}
+                            </span>
+                          </div>
+                        ))}
+                        {details.memberships.length === 0 && <p className="text-slate-600 text-sm italic">Herhangi bir gruba üye değil.</p>}
                       </div>
                     </div>
 
                     <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800">
-                      <h5 className="text-xs font-black text-blue-400 uppercase tracking-widest mb-4">Grup Üyelikleri</h5>
+                      <h5 className="text-xs font-black text-[#00f0ff] uppercase tracking-widest mb-4">Son Chat Mesajları</h5>
                       <div className="space-y-3">
-                        {details.memberships.map((m: any) => (
-                          <div key={m.group_id} className="p-3 bg-slate-900 rounded-xl border border-slate-800">
-                            <div className="flex justify-between items-start mb-1">
-                              <span className="text-sm font-bold text-slate-200">{m.group_name}</span>
-                              <span className={`text-[9px] px-1.5 py-0.5 rounded font-black uppercase ${m.role === 'GROUP_LEADER' ? 'bg-amber-500/20 text-amber-500' : 'bg-blue-500/20 text-blue-500'}`}>{m.role}</span>
-                            </div>
-                            <div className="text-[10px] text-slate-500">Katılım: {new Date(m.joined_at).toLocaleDateString()}</div>
-                          </div>
-                        ))}
-                        {details.memberships.length === 0 && <p className="text-slate-600 text-xs italic">Herhangi bir gruba üye değil.</p>}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Sağ Kolon: Chat Geçmişi */}
-                  <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800 flex flex-col h-[500px]">
-                      <h5 className="text-xs font-black text-purple-400 uppercase tracking-widest mb-4">Sohbet Geçmişi ({details.messages.length})</h5>
-                      <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
                         {details.messages.map((msg: any) => (
-                          <div key={msg.id} className="bg-slate-900/50 p-4 rounded-2xl border border-slate-800 relative group">
-                            <div className="flex justify-between items-start mb-2">
-                              <span className="text-[10px] text-[#00f0ff] font-bold">{msg.group_name}</span>
+                          <div key={msg.id} className="p-3 bg-slate-900 rounded-xl border border-slate-800">
+                            <div className="flex justify-between mb-1">
+                              <span className="text-[#00f0ff] font-bold text-[10px]">{msg.group_name}</span>
                               <span className="text-[9px] text-slate-600">{new Date(msg.timestamp).toLocaleString()}</span>
                             </div>
-                            <p className="text-sm text-slate-300 leading-relaxed italic">"{msg.message_text}"</p>
-                            {msg.is_deleted && <span className="absolute top-2 right-2 bg-red-500/20 text-red-500 text-[8px] px-1 rounded">SİLİNDİ</span>}
+                            <p className="text-slate-300 text-xs italic">"{msg.message_text}"</p>
                           </div>
                         ))}
-                        {details.messages.length === 0 && (
-                          <div className="flex flex-col items-center justify-center h-full text-slate-600">
-                            <svg className="w-12 h-12 opacity-20 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M8 10h.01M12 10h.01M16 10h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-                            <p className="text-sm italic">Henüz hiç mesaj gönderilmemiş.</p>
-                          </div>
-                        )}
+                        {details.messages.length === 0 && <p className="text-slate-600 text-sm italic">Henüz hiç mesaj göndermemiş.</p>}
                       </div>
                     </div>
                   </div>
                 </div>
               )}
             </div>
-            
-            <div className="p-6 bg-slate-800/30 border-t border-slate-800 flex justify-end">
-              <button onClick={() => setViewingDetails(null)} className="bg-slate-800 hover:bg-slate-700 text-white px-8 py-2.5 rounded-xl font-bold transition-all">Kapat</button>
+            <div className="p-6 border-t border-slate-800 bg-slate-800/30 flex justify-end">
+              <button onClick={() => setViewingDetails(null)} className="px-6 py-2 bg-[#00f0ff] text-slate-950 rounded-xl font-bold hover:bg-[#00c0cc] transition-all">Kapat</button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Düzenleme Modalı */}
       {editingUser && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
-            <div className="p-6 border-b border-slate-800 flex justify-between items-center">
-              <h4 className="text-xl font-bold text-slate-100">Kullanıcıyı Düzenle</h4>
-              <button onClick={() => setEditingUser(null)} className="text-slate-500 hover:text-white">✕</button>
-            </div>
-            <form onSubmit={handleUpdateUser} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Ad</label>
-                <input 
-                  type="text" 
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:border-[#00f0ff] outline-none"
-                  value={editingUser.name || ''}
-                  onChange={(e) => setEditingUser({...editingUser, name: e.target.value})}
-                />
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[60] flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-3xl shadow-2xl p-8 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-[#b026ff]"></div>
+            <h4 className="text-2xl font-bold text-slate-100 mb-6 flex items-center gap-2">
+              <span className="text-xl">✏️</span> Kullanıcı Düzenle
+            </h4>
+            <form onSubmit={handleUpdateUser} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase mb-1.5 block">Ad</label>
+                  <input className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-200 outline-none focus:border-[#b026ff]" value={editingUser.name} onChange={e => setEditingUser({...editingUser, name: e.target.value})} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase mb-1.5 block">Soyad</label>
+                  <input className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-200 outline-none focus:border-[#b026ff]" value={editingUser.surname} onChange={e => setEditingUser({...editingUser, surname: e.target.value})} />
+                </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Soyad</label>
-                <input 
-                  type="text" 
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:border-[#00f0ff] outline-none"
-                  value={editingUser.surname || ''}
-                  onChange={(e) => setEditingUser({...editingUser, surname: e.target.value})}
-                />
+                <label className="text-[10px] font-black text-slate-500 uppercase mb-1.5 block">Telefon</label>
+                <input className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-200 outline-none focus:border-[#b026ff]" value={editingUser.phone_number} onChange={e => setEditingUser({...editingUser, phone_number: e.target.value})} />
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Telefon</label>
-                <input 
-                  type="text" 
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:border-[#00f0ff] outline-none"
-                  value={editingUser.phone_number || ''}
-                  onChange={(e) => setEditingUser({...editingUser, phone_number: e.target.value})}
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase mb-1.5 block">Yaş</label>
+                  <input type="number" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-200 outline-none focus:border-[#b026ff]" value={editingUser.age || ''} onChange={e => setEditingUser({...editingUser, age: parseInt(e.target.value)})} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase mb-1.5 block">Doğum Tarihi</label>
+                  <input type="date" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-200 outline-none focus:border-[#b026ff]" value={editingUser.birthday || ''} onChange={e => setEditingUser({...editingUser, birthday: e.target.value})} />
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Yaş</label>
-                <input 
-                  type="number" 
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:border-[#00f0ff] outline-none"
-                  value={editingUser.age || ''}
-                  onChange={(e) => setEditingUser({...editingUser, age: parseInt(e.target.value) || 0})}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Doğum Tarihi</label>
-                <input 
-                  type="date" 
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 text-slate-200 focus:border-[#00f0ff] outline-none"
-                  value={editingUser.birthday || ''}
-                  onChange={(e) => setEditingUser({...editingUser, birthday: e.target.value})}
-                />
-              </div>
-              <div className="pt-4 flex gap-3">
-                <button 
-                  type="submit"
-                  className="flex-1 bg-[#00f0ff] text-slate-950 font-bold py-2 rounded-xl hover:shadow-[0_0_15px_#00f0ff] transition-all"
-                >
-                  Kaydet
-                </button>
-                <button 
-                  type="button"
-                  onClick={() => setEditingUser(null)}
-                  className="flex-1 bg-slate-800 text-slate-300 font-bold py-2 rounded-xl hover:bg-slate-700"
-                >
-                  Vazgeç
-                </button>
+              <div className="flex gap-3 pt-6">
+                <button type="button" onClick={() => setEditingUser(null)} className="flex-1 py-3 bg-slate-800 text-slate-400 rounded-2xl font-bold">İptal</button>
+                <button type="submit" className="flex-1 py-3 bg-[#b026ff] text-white rounded-2xl font-bold shadow-[0_0_20px_#b026ff44]">Güncelle</button>
               </div>
             </form>
           </div>

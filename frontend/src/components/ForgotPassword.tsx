@@ -16,11 +16,10 @@ export const ForgotPassword: React.FC<ForgotPasswordProps> = ({ onBackToLogin })
     setLoading(true);
 
     try {
-      const response = await apiFetch('/auth/forgot-password', {
+      await apiFetch('/auth/forgot-password', {
         method: 'POST',
         body: JSON.stringify({ mail: email })
       });
-      const data = await response.json();
       setMessage({ text: "Şifre sıfırlama bağlantısı e-posta adresinize gönderildi (Simüle edildi).", type: 'success' });
     } catch (err: any) {
       setMessage({ text: "E-posta adresi bulunamadı veya bir hata oluştu.", type: 'error' });
