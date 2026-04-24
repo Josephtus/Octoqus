@@ -16,12 +16,12 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
     >
       <div className="relative w-40 h-40 md:w-56 md:h-56 mb-8 flex items-center justify-center">
         {/* Glow arkaplan efekti */}
-        <motion.div 
+        <motion.div
           className="absolute inset-0 rounded-full bg-[#b026ff] opacity-0 blur-3xl"
           animate={{ opacity: [0, 0.2, 0.4, 0.2] }}
           transition={{ duration: 2, delay: 1, repeat: Infinity }}
         />
-        
+
         <svg
           viewBox="0 0 100 100"
           className="w-full h-full drop-shadow-glow-purple z-10"
@@ -46,7 +46,7 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
             animate={{ pathLength: 1, opacity: 1 }}
             transition={{ duration: 2.5, ease: "easeInOut" }}
           />
-          
+
           {/* Gözler */}
           <motion.circle
             cx="40"
@@ -77,16 +77,16 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
         animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
         transition={{ delay: 2.2, duration: 0.8, ease: "easeOut" }}
       >
-        OCTOFINANCE
+        OCTOQUS
       </motion.h1>
-      
+
       <motion.div
         className="mt-6 w-48 h-1 rounded-full bg-slate-800 overflow-hidden"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 2.5 }}
       >
-        <motion.div 
+        <motion.div
           className="h-full bg-gradient-to-r from-[#b026ff] to-[#00f0ff]"
           initial={{ width: "0%" }}
           animate={{ width: "100%" }}
