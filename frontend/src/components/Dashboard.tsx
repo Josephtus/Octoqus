@@ -345,26 +345,41 @@ export const Dashboard: React.FC = () => {
                       )}
                     </div>
 
-                    {activeGroupRole === 'GUEST' ? (
+                    {(activeGroupRole === 'GUEST' || !isActiveGroupApproved) ? (
+
                       <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[40px] p-20 text-center shadow-2xl">
                         <div className="w-24 h-24 bg-[#00f0ff]/10 rounded-[32px] flex items-center justify-center mx-auto mb-10 border border-[#00f0ff]/20">
                           <Users size={48} className="text-[#00f0ff]" />
                         </div>
-                        <h2 className="text-4xl font-black text-white mb-4 tracking-tighter">Birliğe Katılın</h2>
-                        <p className="text-slate-400 max-w-lg mx-auto mb-12 text-lg">Bu grubun tüm detaylarını görmek ve yönetmek için liderden katılım onayı almanız gerekmektedir.</p>
-                        <button 
-                          onClick={async () => {
-                            try {
-                              await apiFetch(`/groups/${activeGroupId}/join`, { method: 'POST' });
-                              alert("Katılma isteği başarıyla gönderildi!");
-                              setActiveGroupId(null);
-                              setRefreshTrigger(prev => prev + 1);
-                            } catch (err: any) { alert(err.message || "Hata."); }
-                          }}
-                          className="px-12 py-5 bg-[#00f0ff] text-slate-950 rounded-2xl font-black text-sm uppercase tracking-[0.2em] hover:scale-105 hover:shadow-[0_0_40px_rgba(0,240,255,0.4)] transition-all"
-                        >
-                          KATILIM İSTEĞİ GÖNDER
-                        </button>
+                        <h2 className="text-4xl font-black text-white mb-4 tracking-tighter">
+                          {activeGroupRole === 'GUEST' ? 'Birliğe Katılın' : 'Onay Bekleniyor'}
+                        </h2>
+                        <p className="text-slate-400 max-w-lg mx-auto mb-12 text-lg">
+                          {activeGroupRole === 'GUEST' 
+                            ? 'Bu grubun tüm detaylarını görmek ve yönetmek için liderden katılım onayı almanız gerekmektedir.'
+                            : 'Katılım isteğiniz gönderildi. Grup lideri onayladığında tüm detayları görebileceksiniz.'}
+                        </p>
+                        {activeGroupRole === 'GUEST' && (
+                          <button 
+                            onClick={async () => {
+                              try {
+                                await apiFetch(`/groups/${activeGroupId}/join`, { method: 'POST' });
+                                alert("Katılma isteği başarıyla gönderildi!");
+                                setActiveGroupId(null);
+                                setRefreshTrigger(prev => prev + 1);
+                              } catch (err: any) { alert(err.message || "Hata."); }
+                            }}
+                            className="px-12 py-5 bg-[#00f0ff] text-slate-950 rounded-2xl font-black text-sm uppercase tracking-[0.2em] hover:scale-105 hover:shadow-[0_0_40px_rgba(0,240,255,0.4)] transition-all"
+                          >
+                            KATILIM İSTEĞİ GÖNDER
+                          </button>
+                        )}
+                        {!isActiveGroupApproved && activeGroupRole !== 'GUEST' && (
+                           <div className="inline-flex items-center gap-3 px-8 py-4 bg-orange-500/10 text-orange-500 rounded-2xl border border-orange-500/20 font-black text-xs uppercase tracking-widest animate-pulse">
+                              <ShieldAlert size={18} /> Lider Onayı Bekleniyor
+                           </div>
+                        )}
+
                       </div>
                     ) : (
                       <div className="animate-fade-in">

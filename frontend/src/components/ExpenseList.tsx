@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../utils/api';
 import { ExpenseCard } from './ExpenseCard';
-import { Pagination } from './common/Pagination';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface ExpenseListProps {
@@ -17,7 +16,45 @@ interface Expense {
   content?: string;
   bill_photo?: string;
   added_by?: number;
+  added_by_name?: string;
+  created_at?: string;
+  updated_at?: string;
 }
+
+const ScrollTrigger: React.FC<{ onTrigger: () => void; enabled: boolean }> = ({ onTrigger, enabled }) => {
+  const triggerRef = React.useRef<HTMLDivElement>(null);
+  const onTriggerRef = React.useRef(onTrigger);
+
+  useEffect(() => {
+    onTriggerRef.current = onTrigger;
+  }, [onTrigger]);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          onTriggerRef.current();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentTrigger = triggerRef.current;
+    if (currentTrigger) {
+      observer.observe(currentTrigger);
+    }
+
+    return () => {
+      if (currentTrigger) observer.unobserve(currentTrigger);
+      observer.disconnect();
+    };
+  }, [enabled]);
+
+  return <div ref={triggerRef} className="h-4 w-full" />;
+};
+
 
 export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigger, currentUserId }) => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -30,36 +67,94 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [editLoading, setEditLoading] = useState(false);
 
-  const fetchExpenses = async (pageNum: number = 1) => {
-    setLoading(true);
+  const isFetchingRef = React.useRef<boolean>(false);
+  const [hasMore, setHasMore] = useState<boolean>(true);
+  const [shouldScrollToBottom, setShouldScrollToBottom] = useState<boolean>(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+
+
+  const fetchExpenses = React.useCallback(async (pageNum: number = 1, append: boolean = false) => {
+    console.log(`[ExpenseList] fetchExpenses: page=${pageNum}, append=${append}, groupId=${groupId}`);
+    if (isFetchingRef.current) {
+      console.log(`[ExpenseList] Already fetching, skipping request.`);
+      return;
+    }
+    
+    isFetchingRef.current = true;
+    if (pageNum === 1) setLoading(true);
     setError(null);
+
+    
     try {
-      const response = await apiFetch(`/expenses/${groupId}?page=${pageNum}&limit=${limit}`);
+      const url = `/expenses/${groupId}?page=${pageNum}&limit=${limit}`;
+      const response = await apiFetch(url);
       const data = await response.json();
-      setExpenses(data.expenses || []);
+      const newExpenses = data.expenses || [];
+      
+      const reversed = [...newExpenses].reverse();
+      const container = containerRef.current;
+      const previousScrollHeight = container?.scrollHeight || 0;
+
+      setExpenses(prev => {
+        if (!append) return reversed;
+        return [...reversed, ...prev];
+      });
+
       setTotalCount(data.total_count || 0);
+      setHasMore(newExpenses.length === limit);
+
+      if (pageNum === 1) {
+        setShouldScrollToBottom(true);
+      } else if (container) {
+        setTimeout(() => {
+          if (container) {
+            container.scrollTop = container.scrollHeight - previousScrollHeight;
+          }
+        }, 0);
+      }
     } catch (err: any) {
-      console.error('Harcamalar yüklenirken hata:', err);
-      setError('Harcamalar yüklenirken bir hata oluştu.');
+      console.error('[ExpenseList] Error:', err);
+      setError(err.message || 'Harcamalar yüklenirken bir hata oluştu.');
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
+      console.log(`[ExpenseList] fetchExpenses finished: page=${pageNum}`);
     }
-  };
+  }, [groupId, limit]);
+
+
 
   useEffect(() => {
     setPage(1);
-    fetchExpenses(1);
-  }, [groupId, refreshTrigger]);
+    fetchExpenses(1, false);
+  }, [groupId, refreshTrigger, fetchExpenses]);
 
   useEffect(() => {
-    fetchExpenses(page);
-  }, [page]);
+    if (shouldScrollToBottom && containerRef.current && !loading) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
+      setShouldScrollToBottom(false);
+    }
+  }, [shouldScrollToBottom, loading]);
+
+  const loadMore = React.useCallback(() => {
+    if (hasMore && !loading) {
+      const nextPage = page + 1;
+      console.log(`[ExpenseList] loadMore triggered: next page=${nextPage}`);
+      setPage(nextPage);
+      fetchExpenses(nextPage, true);
+    }
+  }, [hasMore, page, fetchExpenses, loading]);
+
+
 
   const handleDelete = async (expenseId: number) => {
     if (!window.confirm("Bu harcamayı silmek istediğinize emin misiniz?")) return;
     try {
       await apiFetch(`/expenses/${groupId}/${expenseId}`, { method: 'DELETE' });
-      fetchExpenses(page);
+      // Silme sonrası listeyi sıfırla ve yeniden yükle (tutarlılık için)
+      setPage(1);
+      fetchExpenses(1, false);
     } catch (err: any) {
       alert(err.message || "Silme işlemi başarısız.");
     }
@@ -79,7 +174,9 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
         })
       });
       setEditingExpense(null);
-      fetchExpenses(page);
+      // Güncelleme sonrası listeyi sıfırla ve yeniden yükle
+      setPage(1);
+      fetchExpenses(1, false);
     } catch (err: any) {
       alert(err.message || "Güncelleme başarısız.");
     } finally {
@@ -99,27 +196,43 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
         </h3>
       </div>
 
-      <div className="min-h-[500px] flex flex-col">
-        {loading ? (
-          <div className="flex-1 flex flex-col justify-center items-center py-20 gap-4">
-            <div className="w-10 h-10 border-4 border-[#00f0ff]/20 border-t-[#00f0ff] rounded-full animate-spin"></div>
-            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest animate-pulse">Veri Akışı Sağlanıyor...</p>
-          </div>
-        ) : error ? (
-          <div className="p-6 rounded-2xl bg-red-900/20 border border-red-500/30 text-red-400 text-center font-bold">
-            {error}
-          </div>
-        ) : (
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={page}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.2 }}
-              className="flex-1 flex flex-col"
-            >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 h-fit">
+      <div className="bg-slate-900/50 border border-slate-800/60 rounded-[2rem] p-4 sm:p-8 backdrop-blur-xl shadow-2xl relative overflow-hidden group">
+        {/* Dekoratif Işık Efekti */}
+        <div className="absolute -top-24 -left-24 w-64 h-64 bg-[#00f0ff]/5 rounded-full blur-[100px] pointer-events-none group-hover:bg-[#00f0ff]/10 transition-all duration-1000"></div>
+        
+        <div 
+          ref={containerRef}
+          id="expense-scroll-container"
+          className="h-[600px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent custom-scroll"
+        >
+
+          {loading && page === 1 ? (
+            <div className="h-full flex flex-col justify-center items-center py-20 gap-4">
+              <div className="w-12 h-12 border-4 border-[#00f0ff]/10 border-t-[#00f0ff] rounded-full animate-spin"></div>
+              <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] animate-pulse">Sistem Verileri Alınıyor</p>
+            </div>
+          ) : error ? (
+            <div className="p-10 rounded-3xl bg-red-500/5 border border-red-500/20 text-red-400 text-center flex flex-col items-center gap-4">
+              <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+              </div>
+              <p className="text-sm font-bold">{error}</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {/* Geçmişi yüklemek için tetikleyici yukarıda */}
+              {hasMore && (
+                <div className="py-6 flex justify-center">
+                  <ScrollTrigger onTrigger={loadMore} enabled={hasMore && !loading} />
+                  {loading ? (
+                    <div className="w-5 h-5 border-2 border-[#00f0ff]/10 border-t-[#00f0ff] rounded-full animate-spin"></div>
+                  ) : (
+                    <span className="text-slate-600 text-[9px] font-black uppercase tracking-widest opacity-50">Geçmişi görmek için yukarı kaydırın</span>
+                  )}
+                </div>
+              )}
+
+              <AnimatePresence initial={false}>
                 {expenses.map((expense) => (
                   <ExpenseCard 
                     key={expense.id} 
@@ -129,26 +242,24 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
                     isOwner={currentUserId === expense.added_by}
                   />
                 ))}
-              </div>
+              </AnimatePresence>
 
-              {expenses.length === 0 && (
-                <div className="flex-1 flex flex-col items-center justify-center py-20 text-slate-600">
-                  <p className="italic">Henüz harcama kaydı bulunmuyor.</p>
+              {expenses.length === 0 && !loading && (
+                <div className="h-full flex flex-col items-center justify-center py-40 text-slate-600 gap-4">
+                  <div className="w-16 h-16 bg-slate-800/30 rounded-full flex items-center justify-center">
+                    <svg className="w-8 h-8 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                  </div>
+                  <p className="text-sm font-bold italic opacity-40">Henüz harcama kaydı bulunmuyor.</p>
                 </div>
               )}
-
-              <Pagination 
-                currentPage={page}
-                totalCount={totalCount}
-                limit={limit}
-                onPageChange={setPage}
-              />
-            </motion.div>
-          </AnimatePresence>
-        )}
+            </div>
+          )}
+        </div>
       </div>
 
+
       {/* Düzenleme Modalı */}
+
       {editingExpense && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-slate-900 border border-slate-800 p-8 rounded-3xl w-full max-w-md shadow-2xl relative">
