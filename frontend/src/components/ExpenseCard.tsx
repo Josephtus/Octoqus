@@ -17,10 +17,11 @@ interface ExpenseCardProps {
   expense: Expense;
   onEdit: (expense: Expense) => void;
   onDelete: (expenseId: number) => void;
+  onClick: (expense: Expense) => void;
   isOwner: boolean;
 }
 
-export const ExpenseCard: React.FC<ExpenseCardProps> = ({ expense, onEdit, onDelete, isOwner }) => {
+export const ExpenseCard: React.FC<ExpenseCardProps> = ({ expense, onEdit, onDelete, onClick, isOwner }) => {
   const formattedTime = expense.created_at 
     ? new Date(expense.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) 
     : '';
@@ -29,7 +30,8 @@ export const ExpenseCard: React.FC<ExpenseCardProps> = ({ expense, onEdit, onDel
     <motion.div 
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="group relative flex items-center gap-4 p-3 bg-slate-900/40 border border-slate-800/60 rounded-2xl hover:bg-slate-800/60 hover:border-[#00f0ff]/30 transition-all"
+      onClick={() => onClick(expense)}
+      className="group relative flex items-center gap-4 p-3 bg-slate-900/40 border border-slate-800/60 rounded-2xl hover:bg-slate-800/60 hover:border-[#00f0ff]/30 transition-all cursor-pointer"
     >
       {/* Sol Kısım: İkon ve Miktar */}
       <div className="flex-shrink-0 w-12 h-12 bg-slate-950 rounded-xl flex items-center justify-center border border-slate-800 group-hover:border-[#00f0ff]/20 transition-colors">
@@ -68,24 +70,10 @@ export const ExpenseCard: React.FC<ExpenseCardProps> = ({ expense, onEdit, onDel
       
       {/* Sağ Kısım: Aksiyonlar */}
       <div className="flex items-center gap-1 sm:opacity-0 group-hover:opacity-100 transition-opacity pr-1">
-        {expense.bill_photo && (
-          <a 
-            href={expense.bill_photo} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="p-1.5 text-slate-500 hover:text-[#b026ff] transition-colors"
-            title="Faturayı Gör"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          </a>
-        )}
-
         {isOwner && (
           <>
             <button 
-              onClick={() => onEdit(expense)}
+              onClick={(e) => { e.stopPropagation(); onEdit(expense); }}
               className="p-1.5 text-slate-500 hover:text-[#00f0ff] hover:bg-slate-800 rounded-lg transition-all"
               title="Düzenle"
             >
@@ -94,7 +82,7 @@ export const ExpenseCard: React.FC<ExpenseCardProps> = ({ expense, onEdit, onDel
               </svg>
             </button>
             <button 
-              onClick={() => onDelete(expense.id)}
+              onClick={(e) => { e.stopPropagation(); onDelete(expense.id); }}
               className="p-1.5 text-slate-500 hover:text-red-500 hover:bg-slate-800 rounded-lg transition-all"
               title="Sil"
             >

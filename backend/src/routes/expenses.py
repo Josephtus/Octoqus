@@ -49,6 +49,7 @@ class UpdateExpenseRequest(BaseModel):
     amount: float | None = None
     content: str | None = None
     date: str | None = None
+    remove_bill_photo: bool | str | None = None
 
     @field_validator("amount")
     @classmethod
@@ -398,16 +399,21 @@ async def delete_expense(request: Request, group_id: int, expense_id: int) -> HT
 async def update_expense(request: Request, group_id: int, expense_id: int) -> HTTPResponse:
     """
     Kullanıcının kendi eklediği harcamayı güncellemesi.
-    Fatura fotoğrafı güncellenmez; yalnızca miktar, içerik ve tarih güncellenebilir.
+    Miktar, içerik, tarih ve fatura fotoğrafı güncellenebilir.
     """
     user_id: int = int(request.ctx.user["sub"])
-    body = request.json or {}
-
-    if not body:
-        raise BadRequest("Güncellenecek alanlar (JSON formatında) gereklidir.")
+    
+    # Multipart mı yoksa JSON mı kontrol et
+    is_multipart = request.content_type and request.content_type.startswith("multipart/form-data")
+    
+    data_dict = {}
+    if is_multipart:
+        data_dict = {k: v[0] if isinstance(v, list) else v for k, v in request.form.items()}
+    else:
+        data_dict = request.json or {}
 
     try:
-        data = UpdateExpenseRequest.model_validate(body)
+        data = UpdateExpenseRequest.model_validate(data_dict)
     except ValidationError as exc:
         errors = [{"field": e["loc"][0] if e["loc"] else "unknown", "message": e["msg"]} for e in exc.errors()]
         raise BadRequest(f"Validasyon hatası: {errors}")
@@ -426,7 +432,6 @@ async def update_expense(request: Request, group_id: int, expense_id: int) -> HT
             )
         )
         expense = await session.scalar(stmt)
-
 
         if not expense:
             raise NotFound("Harcama bulunamadı veya silinmiş.")
@@ -448,11 +453,53 @@ async def update_expense(request: Request, group_id: int, expense_id: int) -> HT
             expense.date = date.fromisoformat(data.date)
             updated_fields["date"] = data.date
 
+        # ── Fatura fotoğrafı işlemleri ──────────────────────────────────
+        
+        # 1. Fotoğrafı Kaldır
+        remove_photo = data_dict.get("remove_bill_photo")
+        if remove_photo in (True, "true", "1"):
+            if expense.bill_photo:
+                # Fiziksel dosyayı silmeyi deneyebiliriz (opsiyonel)
+                try:
+                    p = Path("." + expense.bill_photo)
+                    if p.exists(): p.unlink()
+                except: pass
+                expense.bill_photo = None
+                updated_fields["bill_photo"] = None
+
+        # 2. Yeni Fotoğraf Yükle
+        upload = request.files.get("bill_photo")
+        if upload:
+            if isinstance(upload, list):
+                upload = upload[0]
+            body = upload.body
+            name = upload.name or "receipt.jpg"
+
+            if len(body) > MAX_RECEIPT_SIZE:
+                raise BadRequest(f"Fatura boyutu çok büyük. Max: {MAX_RECEIPT_SIZE // (1024*1024)} MB")
+            
+            ext = Path(name).suffix.lower()
+            if ext not in EXTENSION_TO_MIME:
+                raise BadRequest(f"Geçersiz uzantı: {ext}")
+
+            mime = detect_mime(body)
+            if not mime or mime not in ALLOWED_MIME_TYPES:
+                raise BadRequest("Geçersiz dosya formatı.")
+
+            # Eski fotoğrafı sil
+            if expense.bill_photo:
+                try:
+                    p = Path("." + expense.bill_photo)
+                    if p.exists(): p.unlink()
+                except: pass
+
+            expense.bill_photo = await _save_receipt(body, name)
+            updated_fields["bill_photo"] = expense.bill_photo
+
         if not updated_fields:
             return sanic_json({"message": "Değişiklik yapılmadı."}, status=200)
 
         expense.updated_at = datetime.now(timezone.utc)
-
 
         logger.info("expense.updated", expense_id=expense_id, user_id=user_id, updated_fields=list(updated_fields.keys()))
 

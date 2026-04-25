@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../utils/api';
 import { ExpenseCard } from './ExpenseCard';
+import { ExpenseDetailModal } from './ExpenseDetailModal';
+import { UserProfileModal } from './UserProfileModal';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface ExpenseListProps {
@@ -65,7 +67,11 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
   const limit = 20;
 
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
+  const [viewingUserId, setViewingUserId] = useState<number | null>(null);
   const [editLoading, setEditLoading] = useState(false);
+  const [newBillPhoto, setNewBillPhoto] = useState<File | null>(null);
+  const [removePhoto, setRemovePhoto] = useState(false);
 
   const isFetchingRef = React.useRef<boolean>(false);
   const [hasMore, setHasMore] = useState<boolean>(true);
@@ -165,15 +171,25 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
     if (!editingExpense) return;
     setEditLoading(true);
     try {
+      const formData = new FormData();
+      formData.append('amount', editingExpense.amount.toString());
+      formData.append('content', editingExpense.content || '');
+      formData.append('date', editingExpense.date);
+      
+      if (removePhoto) {
+        formData.append('remove_bill_photo', 'true');
+      }
+      if (newBillPhoto) {
+        formData.append('bill_photo', newBillPhoto);
+      }
+
       await apiFetch(`/expenses/${groupId}/${editingExpense.id}`, {
         method: 'PUT',
-        body: JSON.stringify({
-          amount: editingExpense.amount,
-          content: editingExpense.content,
-          date: editingExpense.date
-        })
+        body: formData
       });
       setEditingExpense(null);
+      setNewBillPhoto(null);
+      setRemovePhoto(false);
       // Güncelleme sonrası listeyi sıfırla ve yeniden yükle
       setPage(1);
       fetchExpenses(1, false);
@@ -239,6 +255,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
                     expense={expense} 
                     onDelete={() => handleDelete(expense.id)}
                     onEdit={() => setEditingExpense(expense)}
+                    onClick={(exp) => setSelectedExpense(exp)}
                     isOwner={currentUserId === expense.added_by}
                   />
                 ))}
@@ -296,10 +313,73 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
                   rows={3}
                 />
               </div>
+
+              {/* Fatura Yönetimi */}
+              <div className="space-y-3">
+                <label className="block text-xs font-black text-slate-500 uppercase mb-2">Fatura / Makbuz</label>
+                
+                {editingExpense.bill_photo && !removePhoto ? (
+                  <div className="flex items-center justify-between bg-slate-950 border border-slate-800 p-3 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-slate-800 rounded-lg overflow-hidden border border-slate-700">
+                        <img src={editingExpense.bill_photo.startsWith('http') ? editingExpense.bill_photo : `http://localhost:8000${editingExpense.bill_photo}`} alt="Mevcut Fatura" className="w-full h-full object-cover" />
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Kayıtlı Fatura</span>
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={() => setRemovePhoto(true)}
+                      className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                      title="Faturayı Kaldır"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="relative group">
+                      <input 
+                        type="file" 
+                        accept="image/*"
+                        onChange={(e) => {
+                          if (e.target.files?.[0]) {
+                            setNewBillPhoto(e.target.files[0]);
+                            setRemovePhoto(false);
+                          }
+                        }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                      />
+                      <div className="bg-slate-950 border-2 border-dashed border-slate-800 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 group-hover:border-[#00f0ff]/30 transition-all">
+                        {newBillPhoto ? (
+                          <div className="flex items-center gap-2 text-[#00f0ff]">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                            <span className="text-[10px] font-black uppercase truncate max-w-[200px]">{newBillPhoto.name}</span>
+                          </div>
+                        ) : (
+                          <>
+                            <svg className="w-6 h-6 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                            <span className="text-[10px] font-black text-slate-600 uppercase">Yeni Fatura Yükle</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {removePhoto && (
+                       <div className="flex items-center justify-between bg-red-500/5 border border-red-500/20 p-2 rounded-xl">
+                         <span className="text-[9px] font-black text-red-400 uppercase ml-2">Fatura Silinecek</span>
+                         <button type="button" onClick={() => setRemovePhoto(false)} className="text-[9px] font-black text-slate-500 hover:text-white px-2">VAZGEÇ</button>
+                       </div>
+                    )}
+                  </div>
+                )}
+              </div>
               <div className="flex gap-4 pt-4">
                 <button 
                   type="button" 
-                  onClick={() => setEditingExpense(null)}
+                  onClick={() => {
+                    setEditingExpense(null);
+                    setNewBillPhoto(null);
+                    setRemovePhoto(false);
+                  }}
                   className="flex-1 py-3 bg-slate-800 text-slate-400 rounded-2xl font-bold hover:bg-slate-700 transition-all"
                 >
                   İptal
@@ -316,6 +396,28 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
           </div>
         </div>
       )}
+      {/* Harcama Detay Modalı */}
+      <AnimatePresence>
+        {selectedExpense && (
+          <ExpenseDetailModal 
+            expense={selectedExpense} 
+            onClose={() => setSelectedExpense(null)} 
+            onViewUserProfile={(uid) => {
+              setViewingUserId(uid);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Kullanıcı Profil Modalı */}
+      <AnimatePresence>
+        {viewingUserId && (
+          <UserProfileModal 
+            userId={viewingUserId} 
+            onClose={() => setViewingUserId(null)} 
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
