@@ -359,12 +359,17 @@ async def delete_expense(request: Request, group_id: int, expense_id: int) -> HT
         await _get_active_group(session, group_id)
         await _require_approved_member(session, group_id, user_id)
 
-        stmt = select(Expense).where(
-            Expense.id         == expense_id,
-            Expense.group_id   == group_id,
-            Expense.is_deleted.is_(False),
+        stmt = (
+            select(Expense)
+            .options(joinedload(Expense.added_by_user))
+            .where(
+                Expense.id         == expense_id,
+                Expense.group_id   == group_id,
+                Expense.is_deleted.is_(False),
+            )
         )
         expense = await session.scalar(stmt)
+
 
         if not expense:
             raise NotFound(f"Aktif harcama bulunamadı (id={expense_id}).")
@@ -411,12 +416,17 @@ async def update_expense(request: Request, group_id: int, expense_id: int) -> HT
         await _get_active_group(session, group_id)
         await _require_approved_member(session, group_id, user_id)
 
-        stmt = select(Expense).where(
-            Expense.id == expense_id,
-            Expense.group_id == group_id,
-            Expense.is_deleted.is_(False),
+        stmt = (
+            select(Expense)
+            .options(joinedload(Expense.added_by_user))
+            .where(
+                Expense.id == expense_id,
+                Expense.group_id == group_id,
+                Expense.is_deleted.is_(False),
+            )
         )
         expense = await session.scalar(stmt)
+
 
         if not expense:
             raise NotFound("Harcama bulunamadı veya silinmiş.")
