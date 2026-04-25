@@ -86,13 +86,30 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         
-        # Manuel Migration: Report tablosuna category sütunu ekle (yoksa)
+        # Manuel Migration: Yeni sütunları ekle (yoksa)
+        from sqlalchemy import text
         try:
-            from sqlalchemy import text
             await conn.execute(text("ALTER TABLE reports ADD COLUMN category VARCHAR(50) NOT NULL DEFAULT 'GENEL'"))
-        except Exception:
-            # Sütun zaten varsa hata verecektir, görmezden gel
-            pass
+        except Exception: pass
+
+        try:
+            await conn.execute(text("ALTER TABLE expenses ADD COLUMN is_settlement BOOLEAN NOT NULL DEFAULT FALSE"))
+        except Exception: pass
+
+        try:
+            await conn.execute(text("ALTER TABLE expenses ADD COLUMN recipient_id INTEGER REFERENCES users(id)"))
+        except Exception: pass
+
+        try:
+            # MySQL'de ENUM sütununu oluştur veya zorla büyük harf yapısına güncelle (MODIFY)
+            try:
+                await conn.execute(text("ALTER TABLE expenses ADD COLUMN settlement_status ENUM('PENDING', 'APPROVED', 'REJECTED') NULL"))
+            except Exception:
+                await conn.execute(text("ALTER TABLE expenses MODIFY COLUMN settlement_status ENUM('PENDING', 'APPROVED', 'REJECTED') NULL"))
+            
+            # Mevcut verileri büyük harfe çevir (Küçük harf kaldıysa SQLAlchemy'nin takılmaması için)
+            await conn.execute(text("UPDATE expenses SET settlement_status = UPPER(settlement_status) WHERE is_settlement = 1 AND settlement_status IS NOT NULL"))
+        except Exception: pass
 
 
 async def dispose_engine() -> None:

@@ -18,7 +18,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models import Expense, GroupMember
+from src.models import Expense, GroupMember, SettlementStatus
 
 logger = structlog.get_logger(__name__)
 
@@ -76,20 +76,31 @@ async def calculate_optimized_debts(
 
     # ── 3. Kişi başı harcama & net bakiye ─────────────────────────────────
     spent_by: dict[int, Decimal] = {uid: _d(0) for uid in member_ids}
-    total = _d(0)
+    total_group_expense = _d(0)
 
     for exp in expenses:
-        if exp.added_by in spent_by:
-            amt = _d(exp.amount)
-            spent_by[exp.added_by] += amt
-            total += amt
+        if exp.is_settlement:
+            # ── Hesaplaşma Kaydı ──
+            # Sadece onaylıları bakiye olarak yansıtıyoruz
+            if exp.settlement_status == SettlementStatus.APPROVED:
+                if exp.added_by in spent_by:
+                    spent_by[exp.added_by] += _d(exp.amount)
+                if exp.recipient_id in spent_by:
+                    spent_by[exp.recipient_id] -= _d(exp.amount)
+        else:
+            # ── Normal Grup Harcaması ──
+            if exp.added_by in spent_by:
+                amt = _d(exp.amount)
+                spent_by[exp.added_by] += amt
+                total_group_expense += amt
 
-    per_person = (total / _d(len(members))).quantize(_TWO_PLACES, rounding=ROUND_HALF_UP)
+    # Kişi başı düşen miktar sadece 'normal' grup harcamaları üzerinden hesaplanır
+    per_person = (total_group_expense / _d(len(members))).quantize(_TWO_PLACES, rounding=ROUND_HALF_UP)
 
     logger.info(
         "cash_flow.calc",
         group_id=group_id,
-        total=str(total),
+        total_group_expense=str(total_group_expense),
         per_person=str(per_person),
         members=len(members),
     )
