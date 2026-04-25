@@ -11,31 +11,24 @@ services:
   # MySQL 8.0 - Primary Relational Database
   # ---------------------------------------------------------------------------
   db:
-    image: mysql:8.0
+    image: mysql:8.0-debian
     container_name: octoqus_db
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: supersecret_root_pass
+      MYSQL_DATABASE: octoqus_db
+      MYSQL_USER: octoqus_user
+      MYSQL_PASSWORD: supersecret_db_pass
     ports:
-      - "3307:3306"
+      - "3308:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./backend/init_db:/docker-entrypoint-initdb.d # SQL init scripts (ileride)
     networks:
       - octoqus_net
-    healthcheck:
-      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
     deploy:
       resources:
         limits:
-          memory: 1024M # MySQL max 1 GB RAM
+          memory: 512M
         reservations:
           memory: 256M
 
@@ -85,7 +78,7 @@ services:
       - octoqus_net
     depends_on:
       db:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
     healthcheck:

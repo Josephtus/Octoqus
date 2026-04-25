@@ -28,9 +28,10 @@ import { CreateGroupModal } from './CreateGroupModal';
 import { GroupManagement } from './GroupManagement';
 import { GroupMembers } from './GroupMembers';
 import { Home } from './Home';
+import { GroupInsights } from './GroupInsights';
 
 type TabType = 'Ana Sayfa' | 'Gruplar' | 'Sosyal' | 'Profil' | 'Şikayet' | 'Admin';
-type GroupSubTabType = 'Harcamalar' | 'Borç Durumu' | 'Sohbet' | 'Üyeler' | 'Yönetim';
+type GroupSubTabType = 'Harcamalar' | 'Borç Durumu' | 'Detay' | 'Sohbet' | 'Üyeler' | 'Yönetim';
 
 export const Dashboard: React.FC = () => {
   const [user, setUser] = useState<any>(null);
@@ -321,10 +322,11 @@ export const Dashboard: React.FC = () => {
 
                       {/* Sub-navigation */}
                       {activeGroupRole !== 'GUEST' && (
-                        <div className="flex flex-wrap gap-2 mt-12 bg-white/5 p-2 rounded-3xl w-fit">
+                        <div className="flex flex-wrap items-center gap-2 mt-12 bg-white/5 p-2 rounded-3xl w-full sm:w-fit">
                           {[
                             { id: 'Harcamalar', label: 'Harcamalar', icon: '💸' },
                             { id: 'Borç Durumu', label: 'Hesaplaşma', icon: '📊' },
+                            { id: 'Detay', label: 'Detay', icon: '📈' },
                             { id: 'Sohbet', label: 'Sohbet', icon: '💬' },
                             { id: 'Üyeler', label: 'Üyeler', icon: '👥' },
                             ...(activeGroupRole === 'GROUP_LEADER' ? [{ id: 'Yönetim', label: 'Yönetim', icon: '⚙️' }] : [])
@@ -402,6 +404,7 @@ export const Dashboard: React.FC = () => {
                         )}
 
                         {activeSubTab === 'Borç Durumu' && <DebtList groupId={activeGroupId} currentUserId={user?.id} />}
+                        {activeSubTab === 'Detay' && <GroupInsights groupId={activeGroupId!} currentUserId={user?.id} />}
                         {activeSubTab === 'Sohbet' && <GroupChat groupId={activeGroupId} currentUserId={user?.id} />}
                         {activeSubTab === 'Üyeler' && <GroupMembers groupId={activeGroupId} />}
                         {activeSubTab === 'Yönetim' && activeGroupRole === 'GROUP_LEADER' && (
@@ -455,6 +458,7 @@ export const Dashboard: React.FC = () => {
             </motion.div>
           </div>
         )}
+
       </AnimatePresence>
     </div>
   );

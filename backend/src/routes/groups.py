@@ -69,6 +69,7 @@ class UpdateGroupRequest(BaseModel):
     """Grup profilini düzenleme isteği (partial update)."""
     name: str | None = None
     content: str | None = None
+    custom_categories: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -101,6 +102,7 @@ def _build_group_response(group: Group) -> dict:
         "content": group.content,
         "is_approved": group.is_approved,
         "created_at": group.created_at.isoformat() if group.created_at else None,
+        "custom_categories": group.custom_categories,
     }
 
 
@@ -230,6 +232,25 @@ async def create_group(request: Request) -> HTTPResponse:
         )
 
 
+
+@groups_bp.get("/<group_id:int>")
+@protected
+async def get_group(request: Request, group_id: int) -> HTTPResponse:
+    """Grup detaylarını getirir (Üyelik kontrolü ile)."""
+    user_id: int = int(request.ctx.user["sub"])
+    async with get_session() as session:
+        # Üye mi kontrol et
+        membership = await _get_membership(session, group_id, user_id)
+        if not membership or not membership.is_approved:
+             # Eğer üye değilse sadece is_approved=True olan genel bilgileri görebilir
+             group = await _get_approved_group(session, group_id)
+        else:
+             group = await session.get(Group, group_id)
+             if not group: raise NotFound("Grup bulunamadı.")
+
+        return sanic_json({"group": _build_group_response(group)})
+
+
 # =============================================================================
 # ENDPOINT 2: GET /api/groups — Onaylı Grupları Listele
 # =============================================================================
@@ -312,19 +333,6 @@ async def list_groups(request: Request) -> HTTPResponse:
         )
 
 
-# =============================================================================
-# ENDPOINT 2.5: GET /api/groups/<group_id> — Grup Detaylarını Getir
-# =============================================================================
-
-@groups_bp.get("/<group_id:int>")
-@protected
-async def get_group_details(request: Request, group_id: int) -> HTTPResponse:
-    """
-    Belirtilen grubun temel bilgilerini (ad, açıklama vb.) döner.
-    """
-    async with get_session() as session:
-        group = await _get_approved_group(session, group_id)
-        return sanic_json(_build_group_response(group), status=200)
 
 
 # =============================================================================

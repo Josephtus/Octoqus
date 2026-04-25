@@ -275,6 +275,9 @@ export const DebtList: React.FC<DebtListProps> = ({ groupId, currentUserId }) =>
                      <div className="flex items-center gap-2">
                        {hasPendingRequest ? (
                          <div className="flex items-center gap-2 px-6 py-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
+                           <div className="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-500 mr-1">
+                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                           </div>
                            <div className="flex flex-col">
                              <span className="text-amber-500 font-black text-[11px] uppercase tracking-wider">Ödeme Onay Bekliyor</span>
                              <span className="text-amber-500/60 text-[8px] font-bold uppercase tracking-widest">Alacaklı Onayı Gerekiyor</span>

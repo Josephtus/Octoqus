@@ -7,6 +7,7 @@ interface Expense {
   amount: number;
   date: string;
   content?: string;
+  category?: string;
   bill_photo?: string;
   added_by?: number;
   added_by_name?: string;
@@ -78,6 +79,12 @@ export const ExpenseDetailModal: React.FC<ExpenseDetailModalProps> = ({ expense,
               <div className="bg-slate-950/50 border border-slate-800/50 p-4 rounded-2xl">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Saat</label>
                 <div className="text-sm text-slate-200 font-bold">{formattedTime || '--:--'}</div>
+              </div>
+              <div className="bg-slate-950/50 border border-slate-800/50 p-4 rounded-2xl col-span-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Kategori</label>
+                <div className="text-sm text-white font-bold flex items-center gap-2">
+                   {expense.category || 'Belirtilmemiş'}
+                </div>
               </div>
             </div>
 

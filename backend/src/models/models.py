@@ -232,6 +232,9 @@ class Group(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now()
     )
+    custom_categories: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True, comment="JSON string list of {name, icon}"
+    )
 
     # ── İlişkiler ───────────────────────────────────────────────────────────
     members: Mapped[List["GroupMember"]] = relationship(
@@ -338,6 +341,9 @@ class Expense(Base):
     )
     date: Mapped[date] = mapped_column(
         Date, nullable=False, comment="Harcamanın gerçekleştiği tarih"
+    )
+    category: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True, comment="Harcama kategorisi (örn: Market, Fatura)"
     )
 
     # Soft delete & zaman

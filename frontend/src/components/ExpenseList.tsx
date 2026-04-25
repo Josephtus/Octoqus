@@ -11,10 +11,35 @@ interface ExpenseListProps {
   currentUserId?: number;
 }
 
+interface Category {
+  name: string;
+  icon: string;
+}
+
+const DEFAULT_CATEGORIES: Category[] = [
+  { name: 'Konaklama', icon: '🛌' },
+  { name: 'Eğlence', icon: '🎤' },
+  { name: 'Market Alışverişi', icon: '🛒' },
+  { name: 'Sağlık', icon: '🦷' },
+  { name: 'Sigorta', icon: '🧯' },
+  { name: 'Kira ve Masraflar', icon: '🏠' },
+  { name: 'Restoranlar ve Barlar', icon: '🍔' },
+  { name: 'Shopping', icon: '🛍️' },
+  { name: 'Transport', icon: '🚕' },
+  { name: 'Fatura', icon: '🧾' },
+  { name: 'Balık', icon: '🐟' },
+  { name: 'Yufkacı', icon: '🥟' },
+  { name: 'Kasap', icon: '🥩' },
+  { name: 'İçme suyu', icon: '💧' },
+  { name: 'Halı Yıkama', icon: '🧼' },
+  { name: 'Diğer', icon: '🖐️' },
+];
+
 interface Expense {
   id: number;
   amount: number;
   date: string;
+  category?: string;
   content?: string;
   bill_photo?: string;
   added_by?: number;
@@ -72,6 +97,10 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
   const [editLoading, setEditLoading] = useState(false);
   const [newBillPhoto, setNewBillPhoto] = useState<File | null>(null);
   const [removePhoto, setRemovePhoto] = useState(false);
+
+  // Category State for Editing
+  const [customCategories, setCustomCategories] = useState<Category[]>([]);
+  const [isCategoryListOpen, setIsCategoryListOpen] = useState(false);
 
   const isFetchingRef = React.useRef<boolean>(false);
   const [hasMore, setHasMore] = useState<boolean>(true);
@@ -132,6 +161,18 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
 
 
   useEffect(() => {
+    const fetchGroupData = async () => {
+      try {
+        const res = await apiFetch(`/groups/${groupId}`);
+        const data = await res.json();
+        if (data.group.custom_categories) {
+          setCustomCategories(JSON.parse(data.group.custom_categories));
+        }
+      } catch (err) {
+        console.error("Grup verisi çekilemedi:", err);
+      }
+    };
+    fetchGroupData();
     setPage(1);
     fetchExpenses(1, false);
   }, [groupId, refreshTrigger, fetchExpenses]);
@@ -175,6 +216,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
       formData.append('amount', editingExpense.amount.toString());
       formData.append('content', editingExpense.content || '');
       formData.append('date', editingExpense.date);
+      formData.append('category', editingExpense.category || 'Diğer');
       
       if (removePhoto) {
         formData.append('remove_bill_photo', 'true');
@@ -283,6 +325,52 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
             <div className="absolute top-0 left-0 w-full h-1 bg-[#00f0ff]"></div>
             <h4 className="text-2xl font-black text-[#00f0ff] mb-6">Harcamayı Düzenle</h4>
             <form onSubmit={handleUpdate} className="space-y-5">
+              {/* Kategori Seçici */}
+              <div className="relative">
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1">Kategori</label>
+                <button
+                  type="button"
+                  onClick={() => setIsCategoryListOpen(!isCategoryListOpen)}
+                  className="w-full flex items-center justify-between bg-slate-950 border border-slate-800 rounded-xl p-4 hover:border-[#00f0ff]/30 transition-all group"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">
+                      {[...DEFAULT_CATEGORIES, ...customCategories].find(c => c.name === editingExpense.category)?.icon || '📦'}
+                    </span>
+                    <span className="text-white font-bold">{editingExpense.category || 'Kategori Seç'}</span>
+                  </div>
+                  <svg className={`w-5 h-5 text-slate-500 transition-transform ${isCategoryListOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                </button>
+
+                <AnimatePresence>
+                  {isCategoryListOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      className="absolute z-50 top-full left-0 right-0 mt-2 bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden"
+                    >
+                      <div className="max-h-[200px] overflow-y-auto custom-scrollbar p-2">
+                        {[...DEFAULT_CATEGORIES, ...customCategories].map((cat, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => { 
+                              setEditingExpense({...editingExpense, category: cat.name});
+                              setIsCategoryListOpen(false); 
+                            }}
+                            className="w-full flex items-center gap-4 p-3 hover:bg-white/5 rounded-xl transition-all"
+                          >
+                            <span className="text-xl">{cat.icon}</span>
+                            <span className="text-slate-300 font-bold text-sm">{cat.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
               <div>
                 <label className="block text-xs font-black text-slate-500 uppercase mb-2">Miktar</label>
                 <input 

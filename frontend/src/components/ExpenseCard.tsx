@@ -6,6 +6,7 @@ interface Expense {
   amount: number;
   date: string;
   content?: string;
+  category?: string;
   bill_photo?: string;
   added_by?: number;
   added_by_name?: string;
@@ -34,8 +35,26 @@ export const ExpenseCard: React.FC<ExpenseCardProps> = ({ expense, onEdit, onDel
       className="group relative flex items-center gap-4 p-3 bg-slate-900/40 border border-slate-800/60 rounded-2xl hover:bg-slate-800/60 hover:border-[#00f0ff]/30 transition-all cursor-pointer"
     >
       {/* Sol Kısım: İkon ve Miktar */}
-      <div className="flex-shrink-0 w-12 h-12 bg-slate-950 rounded-xl flex items-center justify-center border border-slate-800 group-hover:border-[#00f0ff]/20 transition-colors">
-        <span className="text-[#00f0ff] font-black text-xs">₺</span>
+      <div className="flex-shrink-0 w-12 h-12 bg-slate-950 rounded-xl flex items-center justify-center border border-slate-800 group-hover:border-[#00f0ff]/20 transition-colors text-xl">
+        {expense.category ? (
+          <span>{expense.category === 'Market Alışverişi' ? '🛒' : 
+                 expense.category === 'Konaklama' ? '🛌' :
+                 expense.category === 'Eğlence' ? '🎤' :
+                 expense.category === 'Sağlık' ? '🦷' :
+                 expense.category === 'Sigorta' ? '🧯' :
+                 expense.category === 'Kira ve Masraflar' ? '🏠' :
+                 expense.category === 'Restoranlar ve Barlar' ? '🍔' :
+                 expense.category === 'Shopping' ? '🛍️' :
+                 expense.category === 'Transport' ? '🚕' :
+                 expense.category === 'Fatura' ? '🧾' :
+                 expense.category === 'Balık' ? '🐟' :
+                 expense.category === 'Yufkacı' ? '🥟' :
+                 expense.category === 'Kasap' ? '🥩' :
+                 expense.category === 'İçme suyu' ? '💧' :
+                 expense.category === 'Halı Yıkama' ? '🧼' : '📦'}</span>
+        ) : (
+          <span className="text-[#00f0ff] font-black text-xs">₺</span>
+        )}
       </div>
 
       {/* Orta Kısım: Detaylar */}

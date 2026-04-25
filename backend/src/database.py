@@ -101,14 +101,19 @@ async def init_db() -> None:
         except Exception: pass
 
         try:
-            # MySQL'de ENUM sütununu oluştur veya zorla büyük harf yapısına güncelle (MODIFY)
+            # ENUM değerlerini Python modelindeki gibi (lowercase) kullan
             try:
-                await conn.execute(text("ALTER TABLE expenses ADD COLUMN settlement_status ENUM('PENDING', 'APPROVED', 'REJECTED') NULL"))
+                await conn.execute(text("ALTER TABLE expenses ADD COLUMN settlement_status ENUM('pending', 'approved', 'rejected') NULL"))
             except Exception:
-                await conn.execute(text("ALTER TABLE expenses MODIFY COLUMN settlement_status ENUM('PENDING', 'APPROVED', 'REJECTED') NULL"))
-            
-            # Mevcut verileri büyük harfe çevir (Küçük harf kaldıysa SQLAlchemy'nin takılmaması için)
-            await conn.execute(text("UPDATE expenses SET settlement_status = UPPER(settlement_status) WHERE is_settlement = 1 AND settlement_status IS NOT NULL"))
+                await conn.execute(text("ALTER TABLE expenses MODIFY COLUMN settlement_status ENUM('pending', 'approved', 'rejected') NULL"))
+        except Exception: pass
+
+        try:
+            await conn.execute(text("ALTER TABLE expenses ADD COLUMN category VARCHAR(100) NULL"))
+        except Exception: pass
+
+        try:
+            await conn.execute(text("ALTER TABLE groups ADD COLUMN custom_categories TEXT NULL"))
         except Exception: pass
 
 

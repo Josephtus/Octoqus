@@ -49,6 +49,7 @@ class UpdateExpenseRequest(BaseModel):
     amount: float | None = None
     content: str | None = None
     date: str | None = None
+    category: str | None = None
     remove_bill_photo: bool | str | None = None
 
     @field_validator("amount")
@@ -122,6 +123,7 @@ def _build_expense(exp: Expense) -> dict:
         "date":          exp.date.isoformat() if exp.date else None,
         "is_settlement": exp.is_settlement,
         "status":        exp.settlement_status.value.lower() if exp.settlement_status else None,
+        "category":      exp.category,
         "created_at":    exp.created_at.isoformat() if exp.created_at else None,
         "updated_at":    exp.updated_at.isoformat() if exp.updated_at else None,
     }
@@ -212,6 +214,8 @@ async def add_expense(request: Request, group_id: int) -> HTTPResponse:
             bill_photo_url = await _save_receipt(body, name)
 
         # ── Veritabanına kaydet ────────────────────────────────────────────
+        category = (form.get("category") or "").strip() or None
+
         expense = Expense(
             group_id   = group_id,
             added_by   = user_id,
@@ -219,6 +223,7 @@ async def add_expense(request: Request, group_id: int) -> HTTPResponse:
             content    = content,
             bill_photo = bill_photo_url,
             date       = expense_date,
+            category   = category,
             is_deleted = False,
         )
         logger.debug("expense.inserting", group_id=group_id, user_id=user_id, amount=amount)
@@ -459,6 +464,10 @@ async def update_expense(request: Request, group_id: int, expense_id: int) -> HT
         if data.date is not None:
             expense.date = date.fromisoformat(data.date)
             updated_fields["date"] = data.date
+
+        if data.category is not None:
+            expense.category = data.category
+            updated_fields["category"] = data.category
 
         # ── Fatura fotoğrafı işlemleri ──────────────────────────────────
         
