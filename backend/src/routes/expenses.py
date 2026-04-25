@@ -25,7 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
 from src.database import get_session
-from src.models import Expense, Group, GroupMember, User
+from src.models import Expense, Group, GroupMember, User, GroupMemberRole, SettlementStatus
 from src.services.cash_flow import calculate_optimized_debts
 from src.services.security import protected
 
@@ -120,6 +120,8 @@ def _build_expense(exp: Expense) -> dict:
         "content":       exp.content,
         "bill_photo":    exp.bill_photo,
         "date":          exp.date.isoformat() if exp.date else None,
+        "is_settlement": exp.is_settlement,
+        "status":        exp.settlement_status.value.lower() if exp.settlement_status else None,
         "created_at":    exp.created_at.isoformat() if exp.created_at else None,
         "updated_at":    exp.updated_at.isoformat() if exp.updated_at else None,
     }
@@ -273,16 +275,21 @@ async def list_expenses(request: Request, group_id: int) -> HTTPResponse:
 
         # Toplam sayıyı al
         count_stmt = select(func.count(Expense.id)).where(
-            Expense.group_id == group_id, Expense.is_deleted.is_(False)
+            Expense.group_id == group_id, Expense.is_deleted.is_(False), Expense.is_settlement.is_(False)
         )
         total_count = await session.scalar(count_stmt) or 0
 
         logger.debug("expenses.list_request", group_id=group_id, page=page, limit=limit, total_count=total_count)
 
+        # Filtreler: Sadece normal harcamalar
         stmt = (
             select(Expense)
             .options(joinedload(Expense.added_by_user))
-            .where(Expense.group_id == group_id, Expense.is_deleted.is_(False))
+            .where(
+                Expense.group_id == group_id,
+                Expense.is_deleted.is_(False),
+                Expense.is_settlement.is_(False) # Hesaplaşmaları burada gösterme
+            )
             .order_by(Expense.date.desc(), Expense.created_at.desc())
             .offset(offset)
             .limit(limit)
@@ -510,3 +517,161 @@ async def update_expense(request: Request, group_id: int, expense_id: int) -> HT
             }, 
             status=200
         )
+
+
+# =============================================================================
+# ENDPOINT 6: POST /api/expenses/<group_id>/settle — Hesaplaşma İsteği
+# =============================================================================
+
+class SettleRequest(BaseModel):
+    recipient_id: int
+    amount: float
+
+@expenses_bp.post("/<group_id:int>/settle")
+@protected
+async def create_settlement(request: Request, group_id: int) -> HTTPResponse:
+    """Borçlu kişinin alacaklıya 'ödedim' bildirimi göndermesi."""
+    user_id: int = int(request.ctx.user["sub"])
+    body = request.json or {}
+    
+    try:
+        data = SettleRequest.model_validate(body)
+    except ValidationError as exc:
+        raise BadRequest(f"Validasyon hatası: {exc.errors()}")
+
+    if data.amount <= 0:
+        raise BadRequest("Tutar pozitif olmalıdır.")
+
+    async with get_session() as session:
+        await _get_active_group(session, group_id)
+        await _require_approved_member(session, group_id, user_id)
+        await _require_approved_member(session, group_id, data.recipient_id)
+
+        # Bu bir 'Harcama' kaydı olarak sisteme girer ama tipi 'settlement'
+        settlement = Expense(
+            group_id=group_id,
+            added_by=user_id,
+            recipient_id=data.recipient_id,
+            amount=data.amount,
+            content=f"Borç Ödemesi (Onay Bekliyor)",
+            date=datetime.now().date(),
+            is_settlement=True,
+            settlement_status=SettlementStatus.PENDING
+        )
+        session.add(settlement)
+        await session.commit()
+        
+        return sanic_json({"message": "Ödeme bildirimi gönderildi. Onay bekleniyor."}, status=201)
+
+
+# =============================================================================
+# ENDPOINT 7: GET /api/expenses/<group_id>/settlements — Bekleyen Hesaplaşmalar
+# =============================================================================
+
+@expenses_bp.get("/<group_id:int>/settlements")
+@protected
+async def list_settlements(request: Request, group_id: int) -> HTTPResponse:
+    """Gruptaki ilgili ödeme bildirimlerini listeler."""
+    user_id: int = int(request.ctx.user["sub"])
+    
+    async with get_session() as session:
+        await _get_active_group(session, group_id)
+        await _require_approved_member(session, group_id, user_id)
+
+        # Kullanıcının gönderdiği veya ona gelen bekleyen hesaplaşmalar
+        stmt = (
+            select(Expense)
+            .options(joinedload(Expense.added_by_user), joinedload(Expense.recipient_user))
+            .where(
+                Expense.group_id == group_id,
+                Expense.is_settlement == True,
+                Expense.is_deleted == False,
+                (Expense.added_by == user_id) | (Expense.recipient_id == user_id)
+            )
+            .order_by(Expense.created_at.desc())
+        )
+        result = await session.execute(stmt)
+        settlements = result.scalars().unique().all()
+
+        return sanic_json({
+            "settlements": [
+                {
+                    "id": s.id,
+                    "from_user_id": s.added_by,
+                    "from_user_name": f"{s.added_by_user.name} {s.added_by_user.surname}" if s.added_by_user else "Bilinmeyen",
+                    "to_user_id": s.recipient_id,
+                    "to_user_name": f"{s.recipient_user.name} {s.recipient_user.surname}" if s.recipient_user else "Bilinmeyen",
+                    "amount": float(s.amount),
+                    "status": s.settlement_status.value.lower() if s.settlement_status else "pending",
+                    "created_at": s.created_at.isoformat()
+                } for s in settlements
+            ]
+        })
+
+
+# =============================================================================
+# ENDPOINT 8: POST /api/expenses/<group_id>/settlements/<id>/approve — Onayla
+# =============================================================================
+
+@expenses_bp.post("/<group_id:int>/settlements/<expense_id:int>/approve")
+@protected
+async def approve_settlement(request: Request, group_id: int, expense_id: int) -> HTTPResponse:
+    """Alacaklı kişinin ödemeyi onaylaması."""
+    user_id: int = int(request.ctx.user["sub"])
+    
+    async with get_session() as session:
+        stmt = select(Expense).where(
+            Expense.id == expense_id, 
+            Expense.group_id == group_id,
+            Expense.is_settlement == True
+        )
+        settlement = await session.scalar(stmt)
+        
+        if not settlement:
+            raise NotFound("Hesaplaşma kaydı bulunamadı.")
+        
+        if settlement.recipient_id != user_id:
+            raise Forbidden("Yalnızca alacaklı kişi bu ödemeyi onaylayabilir.")
+        
+        if settlement.settlement_status != SettlementStatus.PENDING:
+            raise BadRequest(f"Bu işlem zaten {settlement.settlement_status.value} durumunda.")
+
+        settlement.settlement_status = SettlementStatus.APPROVED
+        settlement.content = "Borç Ödemesi (Onaylandı)"
+        await session.commit()
+        
+        return sanic_json({"message": "Ödeme onaylandı. Borç kapatıldı."})
+
+
+# =============================================================================
+# ENDPOINT 9: POST /api/expenses/<group_id>/settlements/<id>/reject — Reddet
+# =============================================================================
+
+@expenses_bp.post("/<group_id:int>/settlements/<expense_id:int>/reject")
+@protected
+async def reject_settlement(request: Request, group_id: int, expense_id: int) -> HTTPResponse:
+    """Alacaklı kişinin ödemeyi reddetmesi."""
+    user_id: int = int(request.ctx.user["sub"])
+    
+    async with get_session() as session:
+        stmt = select(Expense).where(
+            Expense.id == expense_id, 
+            Expense.group_id == group_id,
+            Expense.is_settlement == True
+        )
+        settlement = await session.scalar(stmt)
+        
+        if not settlement:
+            raise NotFound("Hesaplaşma kaydı bulunamadı.")
+        
+        if settlement.recipient_id != user_id:
+            raise Forbidden("Yalnızca alacaklı kişi bu ödemeyi reddedebilir.")
+        
+        if settlement.settlement_status != SettlementStatus.PENDING:
+            raise BadRequest(f"Bu işlem zaten {settlement.settlement_status.value} durumunda.")
+
+        settlement.settlement_status = SettlementStatus.REJECTED
+        settlement.content = "Borç Ödemesi (Reddedildi)"
+        await session.commit()
+        
+        return sanic_json({"message": "Ödeme reddedildi."})

@@ -63,6 +63,13 @@ class ReportStatus(str, enum.Enum):
     DISMISSED = "dismissed"  # Reddedildi
 
 
+class SettlementStatus(str, enum.Enum):
+    """Hesaplaşma/Ödeme onay durumu."""
+    PENDING   = "pending"
+    APPROVED  = "approved"
+    REJECTED  = "rejected"
+
+
 # =============================================================================
 # FOLLOWER — Self-Referential Many-to-Many (Association Table)
 # =============================================================================
@@ -338,6 +345,21 @@ class Expense(Base):
         Boolean, nullable=False, default=False, comment="True ise harcama soft-deleted"
     )
     deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    
+    # ── Hesaplaşma (Settlement) Alanları ──────────────────────────────────
+    # Borç kapatmak için eklenen 'ödedim' kayıtları
+    is_settlement: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, comment="True ise bu bir borç ödeme kaydıdır"
+    )
+    recipient_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True,
+        comment="Ödeme yapılan kişi (is_settlement=True ise zorunlu)"
+    )
+    settlement_status: Mapped[Optional[SettlementStatus]] = mapped_column(
+        Enum(SettlementStatus), nullable=True, default=None,
+        comment="Ödeme onay durumu"
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now()
     )
@@ -349,6 +371,9 @@ class Expense(Base):
     group: Mapped["Group"] = relationship("Group", back_populates="expenses")
     added_by_user: Mapped[Optional["User"]] = relationship(
         "User", back_populates="expenses_added", foreign_keys=[added_by]
+    )
+    recipient_user: Mapped[Optional["User"]] = relationship(
+        "User", foreign_keys=[recipient_id]
     )
 
     def __repr__(self) -> str:
