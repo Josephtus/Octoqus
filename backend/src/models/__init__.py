@@ -21,6 +21,7 @@ from src.models.models import (
     User,
     follower_table,
     GroupBan,
+    SettlementStatus,
 )
 
 __all__ = [
@@ -38,4 +39,5 @@ __all__ = [
     "GlobalRole",
     "GroupMemberRole",
     "ReportStatus",
+    "SettlementStatus",
 ]

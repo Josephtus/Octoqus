@@ -401,7 +401,7 @@ export const Dashboard: React.FC = () => {
                           </div>
                         )}
 
-                        {activeSubTab === 'Borç Durumu' && <DebtList groupId={activeGroupId} />}
+                        {activeSubTab === 'Borç Durumu' && <DebtList groupId={activeGroupId} currentUserId={user?.id} />}
                         {activeSubTab === 'Sohbet' && <GroupChat groupId={activeGroupId} currentUserId={user?.id} />}
                         {activeSubTab === 'Üyeler' && <GroupMembers groupId={activeGroupId} />}
                         {activeSubTab === 'Yönetim' && activeGroupRole === 'GROUP_LEADER' && (
