@@ -26,6 +26,11 @@ export const Home: React.FC<HomeProps> = ({ user, onSelectGroup }) => {
       for (const group of joinedGroups) {
         try {
           const res = await apiFetch(`/expenses/${group.id}/debts`);
+          if (res.status === 403) {
+            // Kullanıcı henüz onaylanmamış olabilir, bu grubu borç özetinden atla
+            debtData[group.id] = 0;
+            continue;
+          }
           const d = await res.json();
           // Kullanıcının bu gruptaki net durumunu hesapla
           let netBalance = 0;
@@ -38,8 +43,10 @@ export const Home: React.FC<HomeProps> = ({ user, onSelectGroup }) => {
           debtData[group.id] = netBalance;
         } catch (e) {
           console.error(`Grup ${group.id} borç hatası:`, e);
+          debtData[group.id] = 0;
         }
       }
+
       setDebts(debtData);
     } catch (err) {
       console.error("Home veri çekme hatası:", err);

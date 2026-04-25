@@ -22,9 +22,10 @@ from sanic import Blueprint, Request
 from sanic.exceptions import BadRequest, Forbidden, NotFound
 from sanic.response import HTTPResponse, json as sanic_json
 from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 
 from src.database import get_session
-from src.models import Expense, Group, GroupMember
+from src.models import Expense, Group, GroupMember, User
 from src.services.cash_flow import calculate_optimized_debts
 from src.services.security import protected
 
@@ -48,6 +49,7 @@ class UpdateExpenseRequest(BaseModel):
     amount: float | None = None
     content: str | None = None
     date: str | None = None
+    remove_bill_photo: bool | str | None = None
 
     @field_validator("amount")
     @classmethod
@@ -110,14 +112,16 @@ async def _get_active_group(session, group_id: int) -> Group:
 
 def _build_expense(exp: Expense) -> dict:
     return {
-        "id":         exp.id,
-        "group_id":   exp.group_id,
-        "added_by":   exp.added_by,
-        "amount":     float(exp.amount),
-        "content":    exp.content,
-        "bill_photo": exp.bill_photo,
-        "date":       exp.date.isoformat() if exp.date else None,
-        "created_at": exp.created_at.isoformat() if exp.created_at else None,
+        "id":            exp.id,
+        "group_id":      exp.group_id,
+        "added_by":      exp.added_by,
+        "added_by_name": exp.added_by_user.name if exp.added_by_user else "Bilinmiyor",
+        "amount":        float(exp.amount),
+        "content":       exp.content,
+        "bill_photo":    exp.bill_photo,
+        "date":          exp.date.isoformat() if exp.date else None,
+        "created_at":    exp.created_at.isoformat() if exp.created_at else None,
+        "updated_at":    exp.updated_at.isoformat() if exp.updated_at else None,
     }
 
 
@@ -145,8 +149,12 @@ async def add_expense(request: Request, group_id: int) -> HTTPResponse:
     user_id: int = int(request.ctx.user["sub"])
 
     async with get_session() as session:
+        logger.debug("expense.add_started", group_id=group_id, user_id=user_id)
         await _get_active_group(session, group_id)
+        logger.debug("expense.group_verified", group_id=group_id)
         await _require_approved_member(session, group_id, user_id)
+        logger.debug("expense.member_verified", group_id=group_id)
+
 
         # ── Form alanları ──────────────────────────────────────────────────
         form = request.form
@@ -211,9 +219,17 @@ async def add_expense(request: Request, group_id: int) -> HTTPResponse:
             date       = expense_date,
             is_deleted = False,
         )
+        logger.debug("expense.inserting", group_id=group_id, user_id=user_id, amount=amount)
         session.add(expense)
         await session.commit()
-        await session.refresh(expense)
+        logger.debug("expense.committed", expense_id=expense.id)
+        
+        # Kullanıcı bilgisini de içeren güncel harcamayı çek (Lazy-loading hatasını önlemek için)
+        stmt = select(Expense).options(joinedload(Expense.added_by_user)).where(Expense.id == expense.id)
+        result = await session.execute(stmt)
+        expense = result.scalars().unique().one()
+        logger.debug("expense.reloaded", expense_id=expense.id)
+
 
         logger.info("expense.added", expense_id=expense.id, group_id=group_id, user_id=user_id)
 
@@ -246,8 +262,14 @@ async def list_expenses(request: Request, group_id: int) -> HTTPResponse:
 
     async with get_session() as session:
         from sqlalchemy import func
+        logger.debug("expenses.list_started", group_id=group_id, user_id=user_id)
+        
         await _get_active_group(session, group_id)
+        logger.debug("expenses.group_found", group_id=group_id)
+        
         await _require_approved_member(session, group_id, user_id)
+        logger.debug("expenses.member_verified", group_id=group_id)
+
 
         # Toplam sayıyı al
         count_stmt = select(func.count(Expense.id)).where(
@@ -255,14 +277,22 @@ async def list_expenses(request: Request, group_id: int) -> HTTPResponse:
         )
         total_count = await session.scalar(count_stmt) or 0
 
+        logger.debug("expenses.list_request", group_id=group_id, page=page, limit=limit, total_count=total_count)
+
         stmt = (
             select(Expense)
+            .options(joinedload(Expense.added_by_user))
             .where(Expense.group_id == group_id, Expense.is_deleted.is_(False))
             .order_by(Expense.date.desc(), Expense.created_at.desc())
             .offset(offset)
             .limit(limit)
         )
-        expenses = list(await session.scalars(stmt))
+        result = await session.execute(stmt)
+        expenses = list(result.scalars().unique().all())
+        
+        logger.debug("expenses.list_results", group_id=group_id, count=len(expenses))
+
+
 
         return sanic_json({
             "page":         page,
@@ -330,12 +360,17 @@ async def delete_expense(request: Request, group_id: int, expense_id: int) -> HT
         await _get_active_group(session, group_id)
         await _require_approved_member(session, group_id, user_id)
 
-        stmt = select(Expense).where(
-            Expense.id         == expense_id,
-            Expense.group_id   == group_id,
-            Expense.is_deleted.is_(False),
+        stmt = (
+            select(Expense)
+            .options(joinedload(Expense.added_by_user))
+            .where(
+                Expense.id         == expense_id,
+                Expense.group_id   == group_id,
+                Expense.is_deleted.is_(False),
+            )
         )
         expense = await session.scalar(stmt)
+
 
         if not expense:
             raise NotFound(f"Aktif harcama bulunamadı (id={expense_id}).")
@@ -364,16 +399,21 @@ async def delete_expense(request: Request, group_id: int, expense_id: int) -> HT
 async def update_expense(request: Request, group_id: int, expense_id: int) -> HTTPResponse:
     """
     Kullanıcının kendi eklediği harcamayı güncellemesi.
-    Fatura fotoğrafı güncellenmez; yalnızca miktar, içerik ve tarih güncellenebilir.
+    Miktar, içerik, tarih ve fatura fotoğrafı güncellenebilir.
     """
     user_id: int = int(request.ctx.user["sub"])
-    body = request.json or {}
-
-    if not body:
-        raise BadRequest("Güncellenecek alanlar (JSON formatında) gereklidir.")
+    
+    # Multipart mı yoksa JSON mı kontrol et
+    is_multipart = request.content_type and request.content_type.startswith("multipart/form-data")
+    
+    data_dict = {}
+    if is_multipart:
+        data_dict = {k: v[0] if isinstance(v, list) else v for k, v in request.form.items()}
+    else:
+        data_dict = request.json or {}
 
     try:
-        data = UpdateExpenseRequest.model_validate(body)
+        data = UpdateExpenseRequest.model_validate(data_dict)
     except ValidationError as exc:
         errors = [{"field": e["loc"][0] if e["loc"] else "unknown", "message": e["msg"]} for e in exc.errors()]
         raise BadRequest(f"Validasyon hatası: {errors}")
@@ -382,10 +422,14 @@ async def update_expense(request: Request, group_id: int, expense_id: int) -> HT
         await _get_active_group(session, group_id)
         await _require_approved_member(session, group_id, user_id)
 
-        stmt = select(Expense).where(
-            Expense.id == expense_id,
-            Expense.group_id == group_id,
-            Expense.is_deleted.is_(False),
+        stmt = (
+            select(Expense)
+            .options(joinedload(Expense.added_by_user))
+            .where(
+                Expense.id == expense_id,
+                Expense.group_id == group_id,
+                Expense.is_deleted.is_(False),
+            )
         )
         expense = await session.scalar(stmt)
 
@@ -409,8 +453,53 @@ async def update_expense(request: Request, group_id: int, expense_id: int) -> HT
             expense.date = date.fromisoformat(data.date)
             updated_fields["date"] = data.date
 
+        # ── Fatura fotoğrafı işlemleri ──────────────────────────────────
+        
+        # 1. Fotoğrafı Kaldır
+        remove_photo = data_dict.get("remove_bill_photo")
+        if remove_photo in (True, "true", "1"):
+            if expense.bill_photo:
+                # Fiziksel dosyayı silmeyi deneyebiliriz (opsiyonel)
+                try:
+                    p = Path("." + expense.bill_photo)
+                    if p.exists(): p.unlink()
+                except: pass
+                expense.bill_photo = None
+                updated_fields["bill_photo"] = None
+
+        # 2. Yeni Fotoğraf Yükle
+        upload = request.files.get("bill_photo")
+        if upload:
+            if isinstance(upload, list):
+                upload = upload[0]
+            body = upload.body
+            name = upload.name or "receipt.jpg"
+
+            if len(body) > MAX_RECEIPT_SIZE:
+                raise BadRequest(f"Fatura boyutu çok büyük. Max: {MAX_RECEIPT_SIZE // (1024*1024)} MB")
+            
+            ext = Path(name).suffix.lower()
+            if ext not in EXTENSION_TO_MIME:
+                raise BadRequest(f"Geçersiz uzantı: {ext}")
+
+            mime = detect_mime(body)
+            if not mime or mime not in ALLOWED_MIME_TYPES:
+                raise BadRequest("Geçersiz dosya formatı.")
+
+            # Eski fotoğrafı sil
+            if expense.bill_photo:
+                try:
+                    p = Path("." + expense.bill_photo)
+                    if p.exists(): p.unlink()
+                except: pass
+
+            expense.bill_photo = await _save_receipt(body, name)
+            updated_fields["bill_photo"] = expense.bill_photo
+
         if not updated_fields:
             return sanic_json({"message": "Değişiklik yapılmadı."}, status=200)
+
+        expense.updated_at = datetime.now(timezone.utc)
 
         logger.info("expense.updated", expense_id=expense_id, user_id=user_id, updated_fields=list(updated_fields.keys()))
 

@@ -341,6 +341,9 @@ class Expense(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now()
     )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, onupdate=func.now()
+    )
 
     # ── İlişkiler ───────────────────────────────────────────────────────────
     group: Mapped["Group"] = relationship("Group", back_populates="expenses")
