@@ -3,17 +3,37 @@ import { SplashScreen } from './components/SplashScreen';
 import { Login } from './components/Login';
 import { Register } from './components/Register';
 import { ForgotPassword } from './components/ForgotPassword';
+import { ResetPassword } from './components/ResetPassword';
 import { Dashboard } from './components/Dashboard';
 import { LandingPage } from './components/LandingPage';
 import { apiFetch } from './utils/api';
 
-type ScreenState = 'LANDING' | 'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD' | 'SPLASH' | 'DASHBOARD' | 'CHECKING';
+type ScreenState = 'LANDING' | 'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD' | 'RESET_PASSWORD' | 'SPLASH' | 'DASHBOARD' | 'CHECKING';
 
 function App() {
-  const [currentScreen, setCurrentScreen] = useState<ScreenState>('CHECKING');
+  // İlk yüklemede URL'de token var mı kontrol et
+  const [resetToken, setResetToken] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('token');
+  });
+
+  const [currentScreen, setCurrentScreen] = useState<ScreenState>(() => {
+    // Eğer token varsa direkt RESET_PASSWORD ekranıyla başla
+    const params = new URLSearchParams(window.location.search);
+    return params.get('token') ? 'RESET_PASSWORD' : 'CHECKING';
+  });
 
   // Sayfa yüklendiğinde token kontrolü
   useEffect(() => {
+    // Sadece başlangıç kontrolünde veya şifre sıfırlama modunda çalış
+    if (currentScreen !== 'CHECKING' && currentScreen !== 'RESET_PASSWORD') return;
+
+    if (currentScreen === 'RESET_PASSWORD') {
+      // Eğer şifre sıfırlama ekranındaysak, URL'yi temizle (görsel olarak) ama token'ı state'te tut
+      window.history.replaceState({}, document.title, "/");
+      return;
+    }
+
     const token = localStorage.getItem('token');
     if (token) {
       // Token varsa geçerliliğini kontrol et
@@ -33,7 +53,7 @@ function App() {
     } else {
       setCurrentScreen('LANDING');
     }
-  }, []);
+  }, [currentScreen]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200">
@@ -61,6 +81,20 @@ function App() {
 
       {currentScreen === 'FORGOT_PASSWORD' && (
         <ForgotPassword onBackToLogin={() => setCurrentScreen('LOGIN')} />
+      )}
+
+      {currentScreen === 'RESET_PASSWORD' && resetToken && (
+        <ResetPassword 
+          token={resetToken} 
+          onSuccess={() => {
+            setResetToken(null);
+            setCurrentScreen('LOGIN');
+          }}
+          onBackToLogin={() => {
+            setResetToken(null);
+            setCurrentScreen('LOGIN');
+          }}
+        />
       )}
 
       {currentScreen === 'REGISTER' && (
