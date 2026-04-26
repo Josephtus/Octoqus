@@ -690,10 +690,11 @@ async def update_report_status(request: Request, report_id: int) -> HTTPResponse
     """Şikayeti çözüldü (resolved), reddedildi (dismissed) veya incelendi (reviewed) olarak işaretler."""
     admin_id: int = int(request.ctx.user["sub"])
     body = request.json or {}
-    new_status = body.get("status")
+    new_status = (body.get("status") or "").upper()
+    valid_statuses = [s.value for s in ReportStatus]
 
-    if new_status not in [s.value for s in ReportStatus]:
-        raise BadRequest(f"Geçersiz durum. Geçerli durumlar: {', '.join([s.value for s in ReportStatus])}")
+    if new_status not in valid_statuses:
+        raise BadRequest(f"Geçersiz durum. Geçerli durumlar: {', '.join(valid_statuses)}")
 
     async with get_session() as session:
         stmt = select(Report).where(Report.id == report_id)

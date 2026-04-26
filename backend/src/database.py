@@ -103,9 +103,9 @@ async def init_db() -> None:
         try:
             # ENUM değerlerini Python modelindeki gibi (lowercase) kullan
             try:
-                await conn.execute(text("ALTER TABLE expenses ADD COLUMN settlement_status ENUM('pending', 'approved', 'rejected') NULL"))
+                await conn.execute(text("ALTER TABLE expenses ADD COLUMN settlement_status ENUM('PENDING', 'APPROVED', 'REJECTED') NULL"))
             except Exception:
-                await conn.execute(text("ALTER TABLE expenses MODIFY COLUMN settlement_status ENUM('pending', 'approved', 'rejected') NULL"))
+                await conn.execute(text("ALTER TABLE expenses MODIFY COLUMN settlement_status ENUM('PENDING', 'APPROVED', 'REJECTED') NULL"))
         except Exception: pass
 
         try:

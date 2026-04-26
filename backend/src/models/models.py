@@ -57,17 +57,17 @@ class GroupMemberRole(str, enum.Enum):
 
 class ReportStatus(str, enum.Enum):
     """Şikayet/Rapor durumu."""
-    PENDING   = "pending"    # Bekliyor
-    REVIEWED  = "reviewed"   # İnceleniyor
-    RESOLVED  = "resolved"   # Çözüldü
-    DISMISSED = "dismissed"  # Reddedildi
+    PENDING   = "PENDING"    # Bekliyor
+    REVIEWED  = "REVIEWED"   # İnceleniyor
+    RESOLVED  = "RESOLVED"   # Çözüldü
+    DISMISSED = "DISMISSED"  # Reddedildi
 
 
 class SettlementStatus(str, enum.Enum):
     """Hesaplaşma/Ödeme onay durumu."""
-    PENDING   = "pending"
-    APPROVED  = "approved"
-    REJECTED  = "rejected"
+    PENDING   = "PENDING"
+    APPROVED  = "APPROVED"
+    REJECTED  = "REJECTED"
 
 
 # =============================================================================
