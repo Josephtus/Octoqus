@@ -4,12 +4,8 @@ import { ExpenseCard } from './ExpenseCard';
 import { ExpenseDetailModal } from './ExpenseDetailModal';
 import { UserProfileModal } from './UserProfileModal';
 import { motion, AnimatePresence } from 'framer-motion';
-
-interface ExpenseListProps {
-  groupId: number;
-  refreshTrigger: number;
-  currentUserId?: number;
-}
+import { useAuthStore } from '../store/authStore';
+import { useGroupStore } from '../store/groupStore';
 
 interface Category {
   name: string;
@@ -83,7 +79,12 @@ const ScrollTrigger: React.FC<{ onTrigger: () => void; enabled: boolean }> = ({ 
 };
 
 
-export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigger, currentUserId }) => {
+export const ExpenseList: React.FC = () => {
+  const { user } = useAuthStore();
+  const { activeGroup, refreshTrigger } = useGroupStore();
+  const groupId = activeGroup?.id;
+  const currentUserId = user?.id;
+
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +99,6 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
   const [newBillPhoto, setNewBillPhoto] = useState<File | null>(null);
   const [removePhoto, setRemovePhoto] = useState(false);
 
-  // Category State for Editing
   const [customCategories, setCustomCategories] = useState<Category[]>([]);
   const [isCategoryListOpen, setIsCategoryListOpen] = useState(false);
 
@@ -107,19 +107,13 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
   const [shouldScrollToBottom, setShouldScrollToBottom] = useState<boolean>(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
 
-
-
   const fetchExpenses = React.useCallback(async (pageNum: number = 1, append: boolean = false) => {
-    console.log(`[ExpenseList] fetchExpenses: page=${pageNum}, append=${append}, groupId=${groupId}`);
-    if (isFetchingRef.current) {
-      console.log(`[ExpenseList] Already fetching, skipping request.`);
-      return;
-    }
+    if (!groupId) return;
+    if (isFetchingRef.current) return;
     
     isFetchingRef.current = true;
     if (pageNum === 1) setLoading(true);
     setError(null);
-
     
     try {
       const url = `/expenses/${groupId}?page=${pageNum}&limit=${limit}`;
@@ -154,13 +148,11 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
     } finally {
       setLoading(false);
       isFetchingRef.current = false;
-      console.log(`[ExpenseList] fetchExpenses finished: page=${pageNum}`);
     }
   }, [groupId, limit]);
 
-
-
   useEffect(() => {
+    if (!groupId) return;
     const fetchGroupData = async () => {
       try {
         const res = await apiFetch(`/groups/${groupId}`);
@@ -187,19 +179,16 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
   const loadMore = React.useCallback(() => {
     if (hasMore && !loading) {
       const nextPage = page + 1;
-      console.log(`[ExpenseList] loadMore triggered: next page=${nextPage}`);
       setPage(nextPage);
       fetchExpenses(nextPage, true);
     }
   }, [hasMore, page, fetchExpenses, loading]);
 
-
-
   const handleDelete = async (expenseId: number) => {
+    if (!groupId) return;
     if (!window.confirm("Bu harcamayı silmek istediğinize emin misiniz?")) return;
     try {
       await apiFetch(`/expenses/${groupId}/${expenseId}`, { method: 'DELETE' });
-      // Silme sonrası listeyi sıfırla ve yeniden yükle (tutarlılık için)
       setPage(1);
       fetchExpenses(1, false);
     } catch (err: any) {
@@ -209,7 +198,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingExpense) return;
+    if (!editingExpense || !groupId) return;
     setEditLoading(true);
     try {
       const formData = new FormData();
@@ -232,7 +221,6 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
       setEditingExpense(null);
       setNewBillPhoto(null);
       setRemovePhoto(false);
-      // Güncelleme sonrası listeyi sıfırla ve yeniden yükle
       setPage(1);
       fetchExpenses(1, false);
     } catch (err: any) {
@@ -241,6 +229,8 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
       setEditLoading(false);
     }
   };
+
+  if (!groupId) return null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -255,7 +245,6 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
       </div>
 
       <div className="bg-slate-900/50 border border-slate-800/60 rounded-[2rem] p-4 sm:p-8 backdrop-blur-xl shadow-2xl relative overflow-hidden group">
-        {/* Dekoratif Işık Efekti */}
         <div className="absolute -top-24 -left-24 w-64 h-64 bg-[#00f0ff]/5 rounded-full blur-[100px] pointer-events-none group-hover:bg-[#00f0ff]/10 transition-all duration-1000"></div>
         
         <div 
@@ -278,7 +267,6 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
             </div>
           ) : (
             <div className="flex flex-col gap-4">
-              {/* Geçmişi yüklemek için tetikleyici yukarıda */}
               {hasMore && (
                 <div className="py-6 flex justify-center">
                   <ScrollTrigger onTrigger={loadMore} enabled={hasMore && !loading} />
@@ -316,175 +304,172 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
         </div>
       </div>
 
-
-      {/* Düzenleme Modalı */}
-
-      {editingExpense && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
-          <div className="bg-slate-900 border border-slate-800 p-8 rounded-3xl w-full max-w-md shadow-2xl relative">
-            <div className="absolute top-0 left-0 w-full h-1 bg-[#00f0ff]"></div>
-            <h4 className="text-2xl font-black text-[#00f0ff] mb-6">Harcamayı Düzenle</h4>
-            <form onSubmit={handleUpdate} className="space-y-5">
-              {/* Kategori Seçici */}
-              <div className="relative">
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1">Kategori</label>
-                <button
-                  type="button"
-                  onClick={() => setIsCategoryListOpen(!isCategoryListOpen)}
-                  className="w-full flex items-center justify-between bg-slate-950 border border-slate-800 rounded-xl p-4 hover:border-[#00f0ff]/30 transition-all group"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">
-                      {[...DEFAULT_CATEGORIES, ...customCategories].find(c => c.name === editingExpense.category)?.icon || '📦'}
-                    </span>
-                    <span className="text-white font-bold">{editingExpense.category || 'Kategori Seç'}</span>
-                  </div>
-                  <svg className={`w-5 h-5 text-slate-500 transition-transform ${isCategoryListOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
-                </button>
-
-                <AnimatePresence>
-                  {isCategoryListOpen && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 10 }}
-                      className="absolute z-50 top-full left-0 right-0 mt-2 bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden"
-                    >
-                      <div className="max-h-[200px] overflow-y-auto custom-scrollbar p-2">
-                        {[...DEFAULT_CATEGORIES, ...customCategories].map((cat, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => { 
-                              setEditingExpense({...editingExpense, category: cat.name});
-                              setIsCategoryListOpen(false); 
-                            }}
-                            className="w-full flex items-center gap-4 p-3 hover:bg-white/5 rounded-xl transition-all"
-                          >
-                            <span className="text-xl">{cat.icon}</span>
-                            <span className="text-slate-300 font-bold text-sm">{cat.name}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              <div>
-                <label className="block text-xs font-black text-slate-500 uppercase mb-2">Miktar</label>
-                <input 
-                  type="number" 
-                  step="0.01"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 focus:border-[#00f0ff] outline-none transition-all"
-                  value={editingExpense.amount}
-                  onChange={(e) => setEditingExpense({...editingExpense, amount: parseFloat(e.target.value)})}
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-black text-slate-500 uppercase mb-2">Tarih</label>
-                <input 
-                  type="date" 
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 focus:border-[#00f0ff] outline-none transition-all"
-                  value={editingExpense.date}
-                  onChange={(e) => setEditingExpense({...editingExpense, date: e.target.value})}
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-black text-slate-500 uppercase mb-2">Açıklama</label>
-                <textarea 
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 focus:border-[#00f0ff] outline-none transition-all"
-                  value={editingExpense.content}
-                  onChange={(e) => setEditingExpense({...editingExpense, content: e.target.value})}
-                  rows={3}
-                />
-              </div>
-
-              {/* Fatura Yönetimi */}
-              <div className="space-y-3">
-                <label className="block text-xs font-black text-slate-500 uppercase mb-2">Fatura / Makbuz</label>
-                
-                {editingExpense.bill_photo && !removePhoto ? (
-                  <div className="flex items-center justify-between bg-slate-950 border border-slate-800 p-3 rounded-xl">
+      <AnimatePresence>
+        {editingExpense && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
+            <div className="bg-slate-900 border border-slate-800 p-8 rounded-3xl w-full max-w-md shadow-2xl relative">
+              <div className="absolute top-0 left-0 w-full h-1 bg-[#00f0ff]"></div>
+              <h4 className="text-2xl font-black text-[#00f0ff] mb-6">Harcamayı Düzenle</h4>
+              <form onSubmit={handleUpdate} className="space-y-5">
+                <div className="relative">
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1">Kategori</label>
+                  <button
+                    type="button"
+                    onClick={() => setIsCategoryListOpen(!isCategoryListOpen)}
+                    className="w-full flex items-center justify-between bg-slate-950 border border-slate-800 rounded-xl p-4 hover:border-[#00f0ff]/30 transition-all group"
+                  >
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-slate-800 rounded-lg overflow-hidden border border-slate-700">
-                        <img src={editingExpense.bill_photo.startsWith('http') ? editingExpense.bill_photo : `http://localhost:8000${editingExpense.bill_photo}`} alt="Mevcut Fatura" className="w-full h-full object-cover" />
-                      </div>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase">Kayıtlı Fatura</span>
+                      <span className="text-2xl">
+                        {[...DEFAULT_CATEGORIES, ...customCategories].find(c => c.name === editingExpense.category)?.icon || '📦'}
+                      </span>
+                      <span className="text-white font-bold">{editingExpense.category || 'Kategori Seç'}</span>
                     </div>
-                    <button 
-                      type="button"
-                      onClick={() => setRemovePhoto(true)}
-                      className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
-                      title="Faturayı Kaldır"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="relative group">
-                      <input 
-                        type="file" 
-                        accept="image/*"
-                        onChange={(e) => {
-                          if (e.target.files?.[0]) {
-                            setNewBillPhoto(e.target.files[0]);
-                            setRemovePhoto(false);
-                          }
-                        }}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                      />
-                      <div className="bg-slate-950 border-2 border-dashed border-slate-800 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 group-hover:border-[#00f0ff]/30 transition-all">
-                        {newBillPhoto ? (
-                          <div className="flex items-center gap-2 text-[#00f0ff]">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
-                            <span className="text-[10px] font-black uppercase truncate max-w-[200px]">{newBillPhoto.name}</span>
-                          </div>
-                        ) : (
-                          <>
-                            <svg className="w-6 h-6 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                            <span className="text-[10px] font-black text-slate-600 uppercase">Yeni Fatura Yükle</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    {removePhoto && (
-                       <div className="flex items-center justify-between bg-red-500/5 border border-red-500/20 p-2 rounded-xl">
-                         <span className="text-[9px] font-black text-red-400 uppercase ml-2">Fatura Silinecek</span>
-                         <button type="button" onClick={() => setRemovePhoto(false)} className="text-[9px] font-black text-slate-500 hover:text-white px-2">VAZGEÇ</button>
-                       </div>
+                    <svg className={`w-5 h-5 text-slate-500 transition-transform ${isCategoryListOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M19 9l-7 7-7-7" /></svg>
+                  </button>
+
+                  <AnimatePresence>
+                    {isCategoryListOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        className="absolute z-50 top-full left-0 right-0 mt-2 bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden"
+                      >
+                        <div className="max-h-[200px] overflow-y-auto custom-scrollbar p-2">
+                          {[...DEFAULT_CATEGORIES, ...customCategories].map((cat, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => { 
+                                setEditingExpense({...editingExpense, category: cat.name});
+                                setIsCategoryListOpen(false); 
+                              }}
+                              className="w-full flex items-center gap-4 p-3 hover:bg-white/5 rounded-xl transition-all"
+                            >
+                              <span className="text-xl">{cat.icon}</span>
+                              <span className="text-slate-300 font-bold text-sm">{cat.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </motion.div>
                     )}
-                  </div>
-                )}
-              </div>
-              <div className="flex gap-4 pt-4">
-                <button 
-                  type="button" 
-                  onClick={() => {
-                    setEditingExpense(null);
-                    setNewBillPhoto(null);
-                    setRemovePhoto(false);
-                  }}
-                  className="flex-1 py-3 bg-slate-800 text-slate-400 rounded-2xl font-bold hover:bg-slate-700 transition-all"
-                >
-                  İptal
-                </button>
-                <button 
-                  type="submit" 
-                  disabled={editLoading}
-                  className="flex-1 py-3 bg-[#00f0ff] text-slate-950 rounded-2xl font-black shadow-[0_0_20px_#00f0ff44] hover:bg-[#00c0cc] transition-all disabled:opacity-50"
-                >
-                  {editLoading ? 'Güncelleniyor...' : 'KAYDET'}
-                </button>
-              </div>
-            </form>
+                  </AnimatePresence>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-slate-500 uppercase mb-2">Miktar</label>
+                  <input 
+                    type="number" 
+                    step="0.01"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 focus:border-[#00f0ff] outline-none transition-all"
+                    value={editingExpense.amount}
+                    onChange={(e) => setEditingExpense({...editingExpense, amount: parseFloat(e.target.value)})}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-500 uppercase mb-2">Tarih</label>
+                  <input 
+                    type="date" 
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 focus:border-[#00f0ff] outline-none transition-all"
+                    value={editingExpense.date}
+                    onChange={(e) => setEditingExpense({...editingExpense, date: e.target.value})}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-500 uppercase mb-2">Açıklama</label>
+                  <textarea 
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 focus:border-[#00f0ff] outline-none transition-all"
+                    value={editingExpense.content}
+                    onChange={(e) => setEditingExpense({...editingExpense, content: e.target.value})}
+                    rows={3}
+                  />
+                </div>
+
+                <div className="space-y-3">
+                  <label className="block text-xs font-black text-slate-500 uppercase mb-2">Fatura / Makbuz</label>
+                  
+                  {editingExpense.bill_photo && !removePhoto ? (
+                    <div className="flex items-center justify-between bg-slate-950 border border-slate-800 p-3 rounded-xl">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-slate-800 rounded-lg overflow-hidden border border-slate-700">
+                          <img src={editingExpense.bill_photo.startsWith('http') ? editingExpense.bill_photo : `http://localhost:8000${editingExpense.bill_photo}`} alt="Mevcut Fatura" className="w-full h-full object-cover" />
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Kayıtlı Fatura</span>
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => setRemovePhoto(true)}
+                        className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
+                        title="Faturayı Kaldır"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="relative group">
+                        <input 
+                          type="file" 
+                          accept="image/*"
+                          onChange={(e) => {
+                            if (e.target.files?.[0]) {
+                              setNewBillPhoto(e.target.files[0]);
+                              setRemovePhoto(false);
+                            }
+                          }}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                        />
+                        <div className="bg-slate-950 border-2 border-dashed border-slate-800 rounded-2xl p-4 flex flex-col items-center justify-center gap-2 group-hover:border-[#00f0ff]/30 transition-all">
+                          {newBillPhoto ? (
+                            <div className="flex items-center gap-2 text-[#00f0ff]">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" /></svg>
+                              <span className="text-[10px] font-black uppercase truncate max-w-[200px]">{newBillPhoto.name}</span>
+                            </div>
+                          ) : (
+                            <>
+                              <svg className="w-6 h-6 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                              <span className="text-[10px] font-black text-slate-600 uppercase">Yeni Fatura Yükle</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      {removePhoto && (
+                         <div className="flex items-center justify-between bg-red-500/5 border border-red-500/20 p-2 rounded-xl">
+                           <span className="text-[9px] font-black text-red-400 uppercase ml-2">Fatura Silinecek</span>
+                           <button type="button" onClick={() => setRemovePhoto(false)} className="text-[9px] font-black text-slate-500 hover:text-white px-2">VAZGEÇ</button>
+                         </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-4 pt-4">
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setEditingExpense(null);
+                      setNewBillPhoto(null);
+                      setRemovePhoto(false);
+                    }}
+                    className="flex-1 py-3 bg-slate-800 text-slate-400 rounded-2xl font-bold hover:bg-slate-700 transition-all"
+                  >
+                    İptal
+                  </button>
+                  <button 
+                    type="submit" 
+                    disabled={editLoading}
+                    className="flex-1 py-3 bg-[#00f0ff] text-slate-950 rounded-2xl font-black shadow-[0_0_20px_#00f0ff44] hover:bg-[#00c0cc] transition-all disabled:opacity-50"
+                  >
+                    {editLoading ? 'Güncelleniyor...' : 'KAYDET'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
-      {/* Harcama Detay Modalı */}
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {selectedExpense && (
           <ExpenseDetailModal 
@@ -497,7 +482,6 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({ groupId, refreshTrigge
         )}
       </AnimatePresence>
 
-      {/* Kullanıcı Profil Modalı */}
       <AnimatePresence>
         {viewingUserId && (
           <UserProfileModal 

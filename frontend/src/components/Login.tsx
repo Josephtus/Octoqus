@@ -1,38 +1,47 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { apiFetch } from '../utils/api';
+import { loginSchema, type LoginFormData } from '../utils/validations';
 import { Mail, Lock, ArrowLeft, ChevronRight, AlertCircle } from 'lucide-react';
 
 interface LoginProps {
   onLoginSuccess: () => void;
-  onSwitchToRegister: () => void;
-  onSwitchToForgotPassword: () => void;
-  onBackToLanding: () => void;
 }
 
-export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onSwitchToRegister, onSwitchToForgotPassword, onBackToLanding }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<string | null>(null);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+  });
+
+  const onSubmit = async (data: LoginFormData) => {
+    setServerError(null);
     setLoading(true);
     try {
       const response = await apiFetch('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ mail: email, password })
+        body: JSON.stringify(data)
       });
       
-      const data = await response.json();
-      localStorage.setItem("token", data.access_token);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message || "Giriş başarısız.");
+      
+      localStorage.setItem("token", result.access_token);
       onLoginSuccess();
       
     } catch (err: any) {
       console.error("Login hatası:", err);
-      setError(err.message || "Giriş sırasında bir hata oluştu.");
+      setServerError(err.message || "Giriş sırasında bir hata oluştu.");
     } finally {
       setLoading(false);
     }
@@ -54,7 +63,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onSwitchToRegister
         {/* Back Button */}
         <motion.button
           whileHover={{ x: -5 }}
-          onClick={onBackToLanding}
+          onClick={() => navigate('/')}
           className="group mb-8 flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
         >
           <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center group-hover:border-[#00f0ff]/50 transition-all">
@@ -71,7 +80,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onSwitchToRegister
           </div>
 
           <AnimatePresence mode="wait">
-            {error && (
+            {serverError && (
               <motion.div 
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
@@ -79,12 +88,12 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onSwitchToRegister
                 className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-3"
               >
                 <AlertCircle size={16} />
-                {error}
+                {serverError}
               </motion.div>
             )}
           </AnimatePresence>
 
-          <form onSubmit={handleLogin} className="space-y-6">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Email Adresi</label>
               <div className="relative group">
@@ -93,13 +102,16 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onSwitchToRegister
                 </div>
                 <input 
                   type="email" 
-                  required
-                  className="w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-950/50 border border-white/5 text-white placeholder:text-slate-600 focus:outline-none focus:border-[#00f0ff]/50 focus:bg-slate-950 transition-all"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  {...register('mail')}
+                  className={`w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-950/50 border transition-all ${
+                    errors.mail ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#00f0ff]/50'
+                  } text-white placeholder:text-slate-600 focus:outline-none focus:bg-slate-950`}
                   placeholder="isim@sirket.com"
                 />
               </div>
+              {errors.mail && (
+                <p className="text-[10px] text-red-400 ml-1 font-bold">{errors.mail.message}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -107,7 +119,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onSwitchToRegister
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Şifre</label>
                 <button 
                   type="button"
-                  onClick={onSwitchToForgotPassword}
+                  onClick={() => navigate('/forgot-password')}
                   className="text-[10px] font-black text-[#00f0ff] uppercase tracking-widest hover:underline"
                 >
                   Şifremi Unuttum
@@ -119,13 +131,16 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onSwitchToRegister
                 </div>
                 <input 
                   type="password" 
-                  required
-                  className="w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-950/50 border border-white/5 text-white placeholder:text-slate-600 focus:outline-none focus:border-[#00f0ff]/50 focus:bg-slate-950 transition-all"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  {...register('password')}
+                  className={`w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-950/50 border transition-all ${
+                    errors.password ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#00f0ff]/50'
+                  } text-white placeholder:text-slate-600 focus:outline-none focus:bg-slate-950`}
                   placeholder="••••••••"
                 />
               </div>
+              {errors.password && (
+                <p className="text-[10px] text-red-400 ml-1 font-bold">{errors.password.message}</p>
+              )}
             </div>
 
             <button 
@@ -146,7 +161,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onSwitchToRegister
           <div className="mt-10 pt-8 border-t border-white/5 text-center">
             <p className="text-slate-400 text-sm mb-4">Henüz bir hesabınız yok mu?</p>
             <button 
-              onClick={onSwitchToRegister}
+              onClick={() => navigate('/register')}
               className="px-8 py-3 rounded-xl bg-white/5 border border-white/10 text-white font-bold text-sm hover:bg-white/10 transition-all"
             >
               Ücretsiz Kayıt Ol
@@ -159,3 +174,4 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess, onSwitchToRegister
     </div>
   );
 };
+

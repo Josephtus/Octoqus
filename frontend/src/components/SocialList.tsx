@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch, getImageUrl } from '../utils/api';
-import { Search, UserPlus, UserMinus, Shield, X, Calendar, Mail, User as UserIcon } from 'lucide-react';
+import { Search, UserPlus, UserMinus, X, Calendar, Mail, User as UserIcon } from 'lucide-react';
 import { Pagination } from './common/Pagination';
+import { useAuthStore } from '../store/authStore';
 
-interface SocialListProps {
-  currentUserId: number;
-}
-
-export const SocialList: React.FC<SocialListProps> = ({ currentUserId }) => {
+export const SocialList: React.FC = () => {
+  const { user: currentUser } = useAuthStore();
+  const currentUserId = currentUser?.id;
+  
   const [users, setUsers] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
@@ -27,7 +27,6 @@ export const SocialList: React.FC<SocialListProps> = ({ currentUserId }) => {
     }
     setLoading(true);
     try {
-      // Using existing /users/search endpoint (will be updated for pagination)
       const [usersRes, meRes] = await Promise.all([
         apiFetch(`/users/search?q=${encodeURIComponent(search)}&page=${page}&limit=${limit}`),
         apiFetch('/auth/me')
@@ -69,9 +68,10 @@ export const SocialList: React.FC<SocialListProps> = ({ currentUserId }) => {
     }
   };
 
+  if (!currentUserId) return null;
+
   return (
     <div className="space-y-8 animate-fade-in">
-      {/* Search Header */}
       <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 p-8 rounded-[40px] shadow-2xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
           <div>
@@ -115,7 +115,7 @@ export const SocialList: React.FC<SocialListProps> = ({ currentUserId }) => {
                         <div className="flex items-center gap-4 cursor-pointer flex-1" onClick={() => setSelectedUser(user)}>
                           <div className="w-12 h-12 rounded-xl bg-slate-800 overflow-hidden border border-white/10 shadow-lg">
                             {user.profile_photo ? (
-                              <img src={getImageUrl(user.profile_photo)} alt={user.name} className="w-full h-full object-cover" />
+                              <img src={getImageUrl(user.profile_photo) || ''} alt={user.name} className="w-full h-full object-cover" />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-lg">👤</div>
                             )}
@@ -173,7 +173,6 @@ export const SocialList: React.FC<SocialListProps> = ({ currentUserId }) => {
         )}
       </div>
 
-      {/* Profile Detail Modal */}
       <AnimatePresence>
         {selectedUser && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -200,7 +199,7 @@ export const SocialList: React.FC<SocialListProps> = ({ currentUserId }) => {
               <div className="p-10 pt-16 flex flex-col items-center text-center relative z-0">
                 <div className="w-32 h-32 rounded-[40px] bg-slate-800 border-4 border-white/10 overflow-hidden shadow-2xl mb-8">
                   {selectedUser.profile_photo ? (
-                    <img src={getImageUrl(selectedUser.profile_photo)} alt={selectedUser.name} className="w-full h-full object-cover" />
+                    <img src={getImageUrl(selectedUser.profile_photo) || ''} alt={selectedUser.name} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-4xl">👤</div>
                   )}

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch } from '../../utils/api';
 import { Pagination } from '../common/Pagination';
-import { Flag, MessageSquare, AlertTriangle, ShieldAlert, Filter, ChevronDown } from 'lucide-react';
+import { Flag, MessageSquare, AlertTriangle, ShieldAlert, Filter } from 'lucide-react';
 
 interface Report {
   id: number;
@@ -133,8 +133,8 @@ export const AdminReports: React.FC = () => {
                       <div className="flex flex-wrap items-center gap-3">
                         {getCategoryBadge(report.category)}
                         <span className={`text-[9px] font-black px-2 py-1 rounded-md uppercase tracking-widest ${
-                          report.status === 'pending' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 
-                          report.status === 'resolved' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-white/5 text-slate-500'
+                          report.status?.toLowerCase() === 'pending' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 
+                          report.status?.toLowerCase() === 'resolved' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-white/5 text-slate-500'
                         }`}>
                           {report.status}
                         </span>
@@ -143,7 +143,7 @@ export const AdminReports: React.FC = () => {
                         </span>
                       </div>
                       
-                      {report.status === 'pending' && (
+                      {report.status?.toLowerCase() === 'pending' && (
                         <div className="flex gap-2 w-full md:w-auto">
                           <button 
                             onClick={() => handleAction(report.id, 'resolved')} 

@@ -39,6 +39,9 @@ from sanic.exceptions import Forbidden, NotFound, Unauthorized
 from sanic.response import HTTPResponse, json as sanic_json
 from sanic.server.websockets.impl import WebsocketImplProtocol
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
+from redis.exceptions import RedisError
+from websockets.exceptions import ConnectionClosedError
 
 from src.database import get_session
 from src.models import Group, GroupMember, Message
@@ -231,7 +234,7 @@ async def chat_websocket(
         await ws.send(json.dumps({"type": "error", "message": str(exc)}))
         await ws.close()
         return
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         logger.error("ws.auth_db_error", error=str(exc))
         await ws.send(json.dumps({"type": "error", "message": "Sunucu hatası."}))
         await ws.close()
@@ -248,49 +251,15 @@ async def chat_websocket(
     }))
 
     # =========================================================================
-    # ADIM 3: Pub/Sub için ayrı Redis bağlantısı oluştur
-    # Her WS bağlantısı kendi subscriber'ını yönetir.
-    # Ana app.ctx.redis havuzu SADECE publish için kullanılır.
+    # ADIM 3: PubSub Manager'a abone ol
+    # Artık her WS bağlantısı kendi subscriber'ını açmaz.
+    # Global PubSubManager (main.py'de başlatıldı) kullanılır.
     # =========================================================================
-    redis_url: str = os.environ["REDIS_URL"]
-    subscriber_redis = aioredis.from_url(
-        redis_url,
-        encoding="utf-8",
-        decode_responses=True,
-        socket_connect_timeout=5,
-        socket_timeout=30,
-    )
-    pubsub = subscriber_redis.pubsub()
-    await pubsub.subscribe(channel)
+    pubsub_manager = request.app.ctx.pubsub_manager
+    await pubsub_manager.subscribe(channel, ws)
 
     # =========================================================================
-    # ADIM 4: Listener Task — Redis kanalını dinle → WebSocket'e ilet
-    # =========================================================================
-    listener_task: asyncio.Task | None = None
-
-    async def _redis_listener() -> None:
-        """
-        Redis pub/sub kanalını dinler ve gelen mesajları WebSocket istemcisine iletir.
-        Her WS bağlantısı için ayrı bir asyncio task olarak çalışır.
-        """
-        try:
-            async for redis_msg in pubsub.listen():
-                if redis_msg["type"] == "message":
-                    data: str = redis_msg["data"]
-                    try:
-                        await ws.send(data)
-                    except Exception:
-                        # WebSocket kapandıysa döngüden çık
-                        break
-        except asyncio.CancelledError:
-            pass
-        except Exception as exc:
-            logger.error("ws.listener_error", user_id=user_id, group_id=group_id, error=str(exc))
-
-    listener_task = asyncio.create_task(_redis_listener())
-
-    # =========================================================================
-    # ADIM 5: Mesaj Alıcı Döngüsü — WebSocket → DB + Redis publish
+    # ADIM 4: Mesaj Alıcı Döngüsü — WebSocket → DB + Redis publish
     # =========================================================================
     try:
         async for raw_data in ws:
@@ -333,7 +302,7 @@ async def chat_websocket(
                     session.add(new_msg)
                     await session.flush()
                     msg_id = new_msg.id
-            except Exception as exc:
+            except SQLAlchemyError as exc:
                 logger.error("ws.db_save_error", error=str(exc))
                 await ws.send(json.dumps({
                     "type":    "error",
@@ -362,29 +331,21 @@ async def chat_websocket(
                     group_id=group_id,
                     sender=user_id,
                 )
-            except Exception as exc:
+            except RedisError as exc:
                 logger.error("ws.publish_error", error=str(exc))
                 # Publish başarısız olsa bile kullanıcıya hata gösterme
                 # (DB'ye kaydedildi, geçmiş endpointten erişilebilir)
 
-    except Exception as exc:
-        # WebSocket bağlantısı beklenmedik şekilde kapandı
+    except ConnectionClosedError as exc:
+        # WebSocket bağlantısı kapandı
         logger.info("ws.disconnected", user_id=user_id, group_id=group_id, reason=str(exc))
 
     finally:
         # =========================================================================
-        # ADIM 6: Temizlik — Bağlantı kapandığında kaynakları serbest bırak
+        # ADIM 5: Temizlik — Bağlantı kapandığında kaynakları serbest bırak
         # =========================================================================
-        if listener_task and not listener_task.done():
-            listener_task.cancel()
-            try:
-                await listener_task
-            except asyncio.CancelledError:
-                pass
-
         try:
-            await pubsub.unsubscribe(channel)
-            await subscriber_redis.aclose()
+            await pubsub_manager.unsubscribe(channel, ws)
         except Exception as exc:
             logger.warning("ws.cleanup_error", error=str(exc))
 

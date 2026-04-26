@@ -1,0 +1,126 @@
+"""
+src/main.py
+===========
+Sanic Uygulama Giriş Noktası — Octoqus Platform
+"""
+
+import logging
+import os
+from pathlib import Path
+
+# WORKER TIMEOUT FIX: Sanic Manager reads these from environment
+os.environ["SANIC_WORKER_STARTUP_TIMEOUT"] = "60.0"
+os.environ["SANIC_GRACEFUL_SHUTDOWN_TIMEOUT"] = "60.0"
+
+import redis.asyncio as aioredis
+import structlog
+from sanic import Request, Sanic
+from sanic.response import HTTPResponse, json as sanic_json
+from sanic_ext import Extend
+from src.database import dispose_engine, init_db
+from src.services.pubsub import PubSubManager
+from sqlalchemy.exc import SQLAlchemyError
+from redis.exceptions import RedisError
+
+# ---------------------------------------------------------------------------
+# Structlog Yapılandırması
+# ---------------------------------------------------------------------------
+structlog.configure(
+    processors=[
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.JSONRenderer(),
+    ],
+    wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+    context_class=dict,
+    logger_factory=structlog.PrintLoggerFactory(),
+)
+
+logger = structlog.get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Sanic Uygulama Oluşturma
+# ---------------------------------------------------------------------------
+app = Sanic("Octoqus")
+
+app.config.update(
+    {
+        "DEBUG": os.getenv("SANIC_DEBUG", "false").lower() == "true",
+        "OAS": True,
+        "OAS_UI_SWAGGER": True,
+        "OAS_UI_REDOC": True,
+        "OAS_URL_PREFIX": "/api/docs",
+        "OAS_TITLE": "Octoqus API Documentation",
+        "OAS_VERSION": "1.0.0",
+        "OAS_DESCRIPTION": "Octoqus Gider Takip ve Sosyal Finans Platformu API Dokümantasyonu.",
+        "CORS_ORIGINS": "*",
+        "CORS_ALLOW_HEADERS": "Authorization, Content-Type, *",
+        "CORS_METHODS": "*",
+        "KEEP_ALIVE_TIMEOUT": 30,
+        "REQUEST_TIMEOUT": 60,
+        "RESPONSE_TIMEOUT": 60,
+        "REQUEST_MAX_SIZE": 10_485_760,
+    }
+)
+
+# ---------------------------------------------------------------------------
+# LIFECYCLE HOOKS
+# ---------------------------------------------------------------------------
+
+@app.before_server_start
+async def setup_database(application: Sanic, loop) -> None:
+    logger.info("database.connecting")
+    try:
+        await init_db()
+        logger.info("database.ready")
+    except SQLAlchemyError as exc:
+        logger.error("database.connection_failed", error=str(exc))
+        raise
+
+@app.before_server_start
+async def setup_redis(application: Sanic, loop) -> None:
+    redis_url: str = os.environ["REDIS_URL"]
+    logger.info("redis.connecting")
+    try:
+        application.ctx.redis = await aioredis.from_url(
+            redis_url,
+            encoding="utf-8",
+            decode_responses=True,
+            max_connections=20,
+            socket_connect_timeout=5,
+            socket_timeout=5,
+            retry_on_timeout=True,
+        )
+        pong = await application.ctx.redis.ping()
+        logger.info("redis.ready", pong=pong)
+
+        application.ctx.pubsub_manager = PubSubManager(application.ctx.redis)
+        await application.ctx.pubsub_manager.start()
+        logger.info("pubsub.manager.ready")
+    except RedisError as exc:
+        logger.error("redis.connection_failed", error=str(exc))
+        raise
+
+@app.before_server_start
+async def setup_upload_dirs(application: Sanic, loop) -> None:
+    upload_root = Path("./uploads")
+    for subdir in ["avatars", "receipts"]:
+        (upload_root / subdir).mkdir(parents=True, exist_ok=True)
+    logger.info("uploads.dirs_ready")
+
+@app.after_server_stop
+async def close_connections(application: Sanic, loop) -> None:
+    if hasattr(application.ctx, "pubsub_manager"):
+        await application.ctx.pubsub_manager.stop()
+    if hasattr(application.ctx, "redis"):
+        await application.ctx.redis.close()
+    await dispose_engine()
+    logger.info("server.connections_closed")
+
+# ---------------------------------------------------------------------------
+# Middlewares, Blueprints and Routes (Omitted for brevity, but I will keep them)
+# ---------------------------------------------------------------------------
+
+# I will use replace_file_content instead to keep the rest of the file

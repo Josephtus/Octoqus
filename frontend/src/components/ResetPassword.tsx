@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
 import { Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 
-interface ResetPasswordProps {
-  token: string;
-  onSuccess: () => void;
-  onBackToLogin: () => void;
-}
-
-export const ResetPassword: React.FC<ResetPasswordProps> = ({ token, onSuccess, onBackToLogin }) => {
+export const ResetPassword: React.FC = () => {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get('token') || '';
+  
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -18,6 +17,11 @@ export const ResetPassword: React.FC<ResetPasswordProps> = ({ token, onSuccess, 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage(null);
+
+    if (!token) {
+      setMessage({ text: "Geçersiz veya eksik token.", type: 'error' });
+      return;
+    }
 
     if (newPassword !== confirmPassword) {
       setMessage({ text: "Şifreler eşleşmiyor.", type: 'error' });
@@ -44,7 +48,7 @@ export const ResetPassword: React.FC<ResetPasswordProps> = ({ token, onSuccess, 
 
       setMessage({ text: "Şifreniz başarıyla sıfırlandı! Yönlendiriliyorsunuz...", type: 'success' });
       setTimeout(() => {
-        onSuccess();
+        navigate('/login');
       }, 2000);
     } catch (err: any) {
       setMessage({ text: err.message || "Bir hata oluştu. Bağlantı geçersiz veya süresi dolmuş olabilir.", type: 'error' });
@@ -122,7 +126,7 @@ export const ResetPassword: React.FC<ResetPasswordProps> = ({ token, onSuccess, 
         </form>
         
         <button 
-          onClick={onBackToLogin}
+          onClick={() => navigate('/login')}
           className="mt-8 w-full text-center text-[10px] font-black text-slate-500 hover:text-white uppercase tracking-widest transition-all"
         >
           ← GİRİŞ EKRANINA DÖN

@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { apiFetch, getImageUrl } from '../utils/api';
-import { User, Mail, Phone, Calendar, Camera, Save, Shield, BadgeCheck, Trash2, Key, CheckCircle2, AlertCircle, Users, UserPlus, UserMinus, ChevronRight, Settings } from 'lucide-react';
+import { profileSchema, type ProfileFormData, resetPasswordSchema, type ResetPasswordFormData } from '../utils/validations';
+import { User, Camera, Save, BadgeCheck, Trash2, Key, CheckCircle2, AlertCircle, Users, ChevronRight, Settings } from 'lucide-react';
 import { Pagination } from './common/Pagination';
 
 interface ProfileSettingsProps {
@@ -22,19 +25,25 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  const [formData, setFormData] = useState({
-    name: '',
-    surname: '',
-    phone_number: '',
-    birthday: ''
+  const {
+    register: registerProfile,
+    handleSubmit: handleSubmitProfile,
+    setValue: setProfileValue,
+    formState: { errors: profileErrors },
+  } = useForm<ProfileFormData>({
+    resolver: zodResolver(profileSchema),
   });
 
-  const [passwordData, setPasswordData] = useState({
-    current_password: '',
-    new_password: '',
-    new_password_confirm: ''
+  const {
+    register: registerPassword,
+    handleSubmit: handleSubmitPassword,
+    reset: resetPasswordForm,
+    formState: { errors: passwordErrors },
+  } = useForm<ResetPasswordFormData>({
+    resolver: zodResolver(resetPasswordSchema),
   });
 
+  const [currentPassword, setCurrentPassword] = useState('');
   const [pwSaving, setPwSaving] = useState(false);
 
   const fetchProfile = async () => {
@@ -42,12 +51,13 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
       const res = await apiFetch('/auth/me');
       const data = await res.json();
       setUser(data.user);
-      setFormData({
-        name: data.user.name || '',
-        surname: data.user.surname || '',
-        phone_number: data.user.phone_number || '',
-        birthday: data.user.birthday ? (data.user.birthday.includes('T') ? data.user.birthday.split('T')[0] : data.user.birthday) : ''
-      });
+      
+      const birthday = data.user.birthday ? (data.user.birthday.includes('T') ? data.user.birthday.split('T')[0] : data.user.birthday) : '';
+      
+      setProfileValue('name', data.user.name || '');
+      setProfileValue('surname', data.user.surname || '');
+      setProfileValue('phone_number', data.user.phone_number || '');
+      setProfileValue('birthday', birthday);
     } catch (err) {
       console.error("Profil yüklenemedi:", err);
     } finally {
@@ -87,14 +97,13 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
     }
   }, [socialPage]);
 
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const onProfileSubmit = async (data: ProfileFormData) => {
     setSaving(true);
     try {
       const res = await apiFetch('/users/me', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(data)
       });
       if (!res.ok) {
         const error = await res.json();
@@ -110,10 +119,9 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
     }
   };
 
-  const handlePasswordChange = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (passwordData.new_password !== passwordData.new_password_confirm) {
-      alert("Yeni şifreler eşleşmiyor.");
+  const onPasswordSubmit = async (data: ResetPasswordFormData) => {
+    if (!currentPassword) {
+      alert("Lütfen mevcut şifrenizi girin.");
       return;
     }
     setPwSaving(true);
@@ -121,14 +129,19 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
       const res = await apiFetch('/users/me/password', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(passwordData)
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: data.new_password,
+          new_password_confirm: data.confirm_password
+        })
       });
       if (!res.ok) {
         const error = await res.json();
         throw new Error(error.message || "Şifre değiştirme hatası");
       }
       alert("Şifreniz başarıyla değiştirildi.");
-      setPasswordData({ current_password: '', new_password: '', new_password_confirm: '' });
+      resetPasswordForm();
+      setCurrentPassword('');
     } catch (err: any) {
       alert(err.message || "Hata oluştu.");
     } finally {
@@ -198,7 +211,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
             <div className="w-40 h-40 rounded-[48px] bg-slate-800 border-4 border-white/10 overflow-hidden shadow-2xl transition-transform group-hover:scale-105 duration-500 relative">
               {user?.profile_photo ? (
                 <>
-                  <img src={getImageUrl(user.profile_photo)} alt="Profile" className="w-full h-full object-cover" />
+                  <img src={getImageUrl(user.profile_photo) || ''} alt="Profile" className="w-full h-full object-cover" />
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
                     <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-white/10 backdrop-blur-md rounded-xl text-white hover:bg-[#00f0ff] hover:text-slate-950 transition-all">
                       <Camera size={20} />
@@ -269,7 +282,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
           >
             {/* Profil Form Card */}
             <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[40px] p-8 md:p-12 shadow-2xl">
-              <form onSubmit={handleUpdate} className="space-y-10">
+              <form onSubmit={handleSubmitProfile(onProfileSubmit)} className="space-y-10">
                 <div className="flex items-center gap-4 mb-2">
                   <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-[#00f0ff]">
                     <User size={16} />
@@ -282,39 +295,45 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Adınız</label>
                     <input 
                       type="text" 
-                      className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all font-bold"
-                      value={formData.name}
-                      onChange={(e) => setFormData({...formData, name: e.target.value})}
-                      required
+                      {...registerProfile('name')}
+                      className={`w-full bg-slate-950/50 border transition-all rounded-2xl py-4 px-6 text-white focus:outline-none font-bold ${
+                        profileErrors.name ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#00f0ff]/50'
+                      }`}
                     />
+                    {profileErrors.name && <p className="text-[10px] text-red-400 ml-2 font-bold">{profileErrors.name.message}</p>}
                   </div>
                   <div className="space-y-3">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Soyadınız</label>
                     <input 
                       type="text" 
-                      className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all font-bold"
-                      value={formData.surname}
-                      onChange={(e) => setFormData({...formData, surname: e.target.value})}
-                      required
+                      {...registerProfile('surname')}
+                      className={`w-full bg-slate-950/50 border transition-all rounded-2xl py-4 px-6 text-white focus:outline-none font-bold ${
+                        profileErrors.surname ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#00f0ff]/50'
+                      }`}
                     />
+                    {profileErrors.surname && <p className="text-[10px] text-red-400 ml-2 font-bold">{profileErrors.surname.message}</p>}
                   </div>
                   <div className="space-y-3">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Telefon</label>
                     <input 
                       type="tel" 
-                      className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all font-bold"
-                      value={formData.phone_number}
-                      onChange={(e) => setFormData({...formData, phone_number: e.target.value})}
+                      {...registerProfile('phone_number')}
+                      className={`w-full bg-slate-950/50 border transition-all rounded-2xl py-4 px-6 text-white focus:outline-none font-bold ${
+                        profileErrors.phone_number ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#00f0ff]/50'
+                      }`}
                     />
+                    {profileErrors.phone_number && <p className="text-[10px] text-red-400 ml-2 font-bold">{profileErrors.phone_number.message}</p>}
                   </div>
                   <div className="space-y-3">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Doğum Tarihi</label>
                     <input 
                       type="date" 
-                      className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all font-bold"
-                      value={formData.birthday}
-                      onChange={(e) => setFormData({...formData, birthday: e.target.value})}
+                      {...registerProfile('birthday')}
+                      className={`w-full bg-slate-950/50 border transition-all rounded-2xl py-4 px-6 text-white focus:outline-none font-bold [color-scheme:dark] ${
+                        profileErrors.birthday ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#00f0ff]/50'
+                      }`}
                     />
+                    {profileErrors.birthday && <p className="text-[10px] text-red-400 ml-2 font-bold">{profileErrors.birthday.message}</p>}
                   </div>
                 </div>
 
@@ -336,7 +355,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
 
             {/* Şifre Değiştirme Card */}
             <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[40px] p-8 md:p-12 shadow-2xl">
-              <form onSubmit={handlePasswordChange} className="space-y-10">
+              <form onSubmit={handleSubmitPassword(onPasswordSubmit)} className="space-y-10">
                 <div className="flex items-center gap-4 mb-2">
                   <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-[#b026ff]">
                     <Key size={16} />
@@ -350,8 +369,8 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                     <input 
                       type="password" 
                       className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#b026ff]/50 transition-all font-bold"
-                      value={passwordData.current_password}
-                      onChange={(e) => setPasswordData({...passwordData, current_password: e.target.value})}
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
                       required
                     />
                   </div>
@@ -359,21 +378,23 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Yeni Şifre</label>
                     <input 
                       type="password" 
-                      className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#b026ff]/50 transition-all font-bold"
-                      value={passwordData.new_password}
-                      onChange={(e) => setPasswordData({...passwordData, new_password: e.target.value})}
-                      required
+                      {...registerPassword('new_password')}
+                      className={`w-full bg-slate-950/50 border transition-all rounded-2xl py-4 px-6 text-white focus:outline-none font-bold ${
+                        passwordErrors.new_password ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#b026ff]/50'
+                      }`}
                     />
+                    {passwordErrors.new_password && <p className="text-[10px] text-red-400 ml-2 font-bold">{passwordErrors.new_password.message}</p>}
                   </div>
                   <div className="space-y-3">
                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Yeni Şifre Tekrar</label>
                     <input 
                       type="password" 
-                      className="w-full bg-slate-950/50 border border-white/5 rounded-2xl py-4 px-6 text-white focus:outline-none focus:border-[#b026ff]/50 transition-all font-bold"
-                      value={passwordData.new_password_confirm}
-                      onChange={(e) => setPasswordData({...passwordData, new_password_confirm: e.target.value})}
-                      required
+                      {...registerPassword('confirm_password')}
+                      className={`w-full bg-slate-950/50 border transition-all rounded-2xl py-4 px-6 text-white focus:outline-none font-bold ${
+                        passwordErrors.confirm_password ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#b026ff]/50'
+                      }`}
                     />
+                    {passwordErrors.confirm_password && <p className="text-[10px] text-red-400 ml-2 font-bold">{passwordErrors.confirm_password.message}</p>}
                   </div>
                 </div>
 
@@ -428,7 +449,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                     <div className="flex items-center gap-4 cursor-pointer" onClick={() => setSelectedProfile(item)}>
                       <div className="w-12 h-12 rounded-xl bg-slate-800 overflow-hidden border border-white/10">
                         {item.profile_photo ? (
-                          <img src={getImageUrl(item.profile_photo)} alt={item.name} className="w-full h-full object-cover" />
+                          <img src={getImageUrl(item.profile_photo) || ''} alt={item.name} className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-lg">👤</div>
                         )}
@@ -466,7 +487,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
               </div>
             )}
 
-            {activeTab !== 'settings' && socialTotalCount > socialLimit && (
+            {socialTotalCount > socialLimit && (
               <div className="mt-8 pt-8 border-t border-white/5">
                 <Pagination 
                   currentPage={socialPage}
@@ -480,7 +501,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
         )}
       </AnimatePresence>
 
-      {/* User Detail Modal (Reusing SocialList logic) */}
+      {/* User Detail Modal */}
       <AnimatePresence>
         {selectedProfile && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -499,13 +520,13 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                 onClick={() => setSelectedProfile(null)}
                 className="absolute top-6 right-6 p-2 bg-white/5 hover:bg-white/10 rounded-xl transition-all text-slate-400 hover:text-white z-10"
               >
-                <Trash2 size={20} className="rotate-45" /> {/* Close icon substitute */}
+                <Trash2 size={20} className="rotate-45" />
               </button>
 
               <div className="flex flex-col items-center text-center">
                 <div className="w-32 h-32 rounded-[40px] bg-slate-800 border-4 border-white/10 overflow-hidden shadow-2xl mb-8">
                   {selectedProfile.profile_photo ? (
-                    <img src={getImageUrl(selectedProfile.profile_photo)} alt={selectedProfile.name} className="w-full h-full object-cover" />
+                    <img src={getImageUrl(selectedProfile.profile_photo) || ''} alt={selectedProfile.name} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-4xl">👤</div>
                   )}
@@ -528,3 +549,4 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
     </div>
   );
 };
+

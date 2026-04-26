@@ -8,7 +8,8 @@ from sqlalchemy.orm import selectinload
 from src.database import engine, Base, dispose_engine, get_session
 from src.models import (
     User, Group, GroupMember, GlobalRole, GroupMemberRole, 
-    Message, Report, ReportStatus, follower_table, Expense, SettlementStatus
+    Message, Report, ReportStatus, follower_table, Expense, 
+    SettlementStatus, AuditLog, GroupBan
 )
 from src.services.security import hash_password
 
@@ -166,12 +167,32 @@ async def seed_data():
                     content=item["content"], category=item["category"],
                     date=date.today() - timedelta(days=days_ago),
                     created_at=datetime.now(timezone.utc) - timedelta(days=days_ago, hours=random.randint(0, 23)),
-                    is_deleted=False
+                    is_deleted=False, is_settlement=False
                 )
                 session.add(expense)
+            
+            # ── Hesaplaşmalar (Settlements) ──
+            # Her gruba birkaç tane örnek ödeme bildirimi ekle
+            for _ in range(random.randint(2, 5)):
+                p1, p2 = random.sample(members, 2)
+                days_ago = random.randint(0, 10)
+                status = random.choice(list(SettlementStatus))
+                
+                settlement = Expense(
+                    group_id=group.id, 
+                    added_by=p1.id, 
+                    recipient_id=p2.id,
+                    amount=round(random.uniform(50, 500), 2),
+                    content=f"Borç Ödemesi ({status.value})",
+                    date=date.today() - timedelta(days=days_ago),
+                    is_settlement=True,
+                    settlement_status=status,
+                    is_deleted=False
+                )
+                session.add(settlement)
         
         await session.flush()
-        logger.info("Mantıklı ve kategorize edilmiş harcamalar eklendi.")
+        logger.info("Harcamalar ve hesaplaşma örnekleri eklendi.")
 
         # 5. MESAJLAR (CHAT)
         for group in all_groups:
@@ -225,6 +246,23 @@ async def seed_data():
             except: pass
         
         logger.info("Sosyal ağ (takipçiler) oluşturuldu.")
+
+        # 8. AUDIT LOGS & BANS (Örnek)
+        for _ in range(20):
+            admin_user = admin
+            log = AuditLog(
+                admin_id=admin_user.id,
+                process_performed=random.choice(["USER_BAN", "GROUP_DELETE", "EXPENSE_CLEAN"]),
+                content="Örnek denetim kaydı",
+                timestamp=datetime.now(timezone.utc)
+            )
+            session.add(log)
+            
+            if random.random() > 0.7:
+                target_g = random.choice(all_groups)
+                target_u = random.choice(all_users)
+                ban = GroupBan(group_id=target_g.id, user_id=target_u.id)
+                session.add(ban)
 
         await session.commit()
         logger.info("=== SEEDING TAMAMLANDI ===")

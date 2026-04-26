@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
+import { Routes, Route, useNavigate, Navigate, useLocation } from 'react-router-dom';
 import { SplashScreen } from './components/SplashScreen';
 import { Login } from './components/Login';
 import { Register } from './components/Register';
@@ -6,112 +7,87 @@ import { ForgotPassword } from './components/ForgotPassword';
 import { ResetPassword } from './components/ResetPassword';
 import { Dashboard } from './components/Dashboard';
 import { LandingPage } from './components/LandingPage';
-import { apiFetch } from './utils/api';
-
-type ScreenState = 'LANDING' | 'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD' | 'RESET_PASSWORD' | 'SPLASH' | 'DASHBOARD' | 'CHECKING';
+import { useAuthStore } from './store/authStore';
+import { useGroupStore } from './store/groupStore';
+import { Home } from './components/Home';
+import { GroupList } from './components/GroupList';
+import { SocialList } from './components/SocialList';
+import { ProfileSettings } from './components/ProfileSettings';
+import { ReportForm } from './components/ReportForm';
+import { AdminPanel } from './components/admin/AdminPanel';
 
 function App() {
-  // İlk yüklemede URL'de token var mı kontrol et
-  const [resetToken, setResetToken] = useState<string | null>(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('token');
-  });
+  const { user, loading, fetchUser } = useAuthStore();
+  const navigate = useNavigate();
 
-  const [currentScreen, setCurrentScreen] = useState<ScreenState>(() => {
-    // Eğer token varsa direkt RESET_PASSWORD ekranıyla başla
-    const params = new URLSearchParams(window.location.search);
-    return params.get('token') ? 'RESET_PASSWORD' : 'CHECKING';
-  });
-
-  // Sayfa yüklendiğinde token kontrolü
+  // Token kontrolü ve kullanıcı bilgisini çekme (Zustand store üzerinden)
   useEffect(() => {
-    // Sadece başlangıç kontrolünde veya şifre sıfırlama modunda çalış
-    if (currentScreen !== 'CHECKING' && currentScreen !== 'RESET_PASSWORD') return;
+    fetchUser();
+  }, [fetchUser]);
 
-    if (currentScreen === 'RESET_PASSWORD') {
-      // Eğer şifre sıfırlama ekranındaysak, URL'yi temizle (görsel olarak) ama token'ı state'te tut
-      window.history.replaceState({}, document.title, "/");
-      return;
-    }
+  const location = useLocation();
 
-    const token = localStorage.getItem('token');
-    if (token) {
-      // Token varsa geçerliliğini kontrol et
-      apiFetch('/auth/me')
-        .then(res => {
-          if (res.ok) {
-            setCurrentScreen('DASHBOARD'); // Token geçerli → Dashboard
-          } else {
-            localStorage.removeItem('token');
-            setCurrentScreen('LANDING');
-          }
-        })
-        .catch(() => {
-          localStorage.removeItem('token');
-          setCurrentScreen('LANDING');
-        });
-    } else {
-      setCurrentScreen('LANDING');
+  // Eğer şifre sıfırlama token'ı varsa ve ana sayfadaysak o sayfaya yönlendir
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (token && location.pathname === '/') {
+      navigate(`/reset-password?token=${token}`, { replace: true });
     }
-  }, [currentScreen]);
+  }, [navigate, location.pathname]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-slate-950">
+        <h2 className="text-2xl font-bold text-[#00f0ff] animate-pulse uppercase tracking-[0.3em]">Oturum kontrol ediliyor...</h2>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200">
-      {currentScreen === 'CHECKING' && (
-        <div className="flex items-center justify-center min-h-screen">
-          <h2 className="text-2xl font-bold text-[#00f0ff] animate-pulse">Oturum kontrol ediliyor...</h2>
-        </div>
-      )}
+      <Routes>
+        {/* Public Routes */}
+        <Route path="/" element={
+          user ? <Navigate to="/dashboard" replace /> : <LandingPage />
+        } />
+        <Route path="/login" element={
+          user ? <Navigate to="/dashboard" replace /> : <Login onLoginSuccess={() => {
+            navigate('/splash');
+          }} />
+        } />
+        <Route path="/register" element={
+          user ? <Navigate to="/dashboard" replace /> : <Register onRegisterSuccess={() => navigate('/login')} />
+        } />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/splash" element={<SplashScreen onComplete={async () => {
+          // Splash bittiğinde kullanıcıyı çek ve Dashboard'a git
+          await fetchUser();
+          navigate('/dashboard', { replace: true });
+        }} />} />
 
-      {currentScreen === 'LANDING' && (
-        <LandingPage 
-          onLogin={() => setCurrentScreen('LOGIN')} 
-          onRegister={() => setCurrentScreen('REGISTER')} 
-        />
-      )}
+        {/* Private Dashboard Routes */}
+        <Route path="/dashboard" element={
+          user ? <Dashboard /> : <Navigate to="/login" replace />
+        }>
+          <Route index element={<Home onSelectGroup={(id, name, role, isApproved) => {
+             // We still use store but routing will handle the view
+             useGroupStore.getState().setActiveGroup({ id, name, role, isApproved });
+             navigate('/dashboard/groups');
+          }} />} />
+          <Route path="groups" element={<GroupList onSelectGroup={(id, name, role, isApproved) => {
+             useGroupStore.getState().setActiveGroup({ id, name, role, isApproved });
+          }} />} />
+          <Route path="social" element={<SocialList />} />
+          <Route path="profile" element={<ProfileSettings onUpdate={fetchUser} />} />
+          <Route path="support" element={<ReportForm />} />
+          <Route path="admin" element={user?.role?.toLowerCase() === 'admin' ? <AdminPanel /> : <Navigate to="/dashboard" replace />} />
+        </Route>
 
-      {currentScreen === 'LOGIN' && (
-        <Login 
-          onLoginSuccess={() => setCurrentScreen('SPLASH')} 
-          onSwitchToRegister={() => setCurrentScreen('REGISTER')}
-          onSwitchToForgotPassword={() => setCurrentScreen('FORGOT_PASSWORD')}
-          onBackToLanding={() => setCurrentScreen('LANDING')}
-        />
-      )}
-
-      {currentScreen === 'FORGOT_PASSWORD' && (
-        <ForgotPassword onBackToLogin={() => setCurrentScreen('LOGIN')} />
-      )}
-
-      {currentScreen === 'RESET_PASSWORD' && resetToken && (
-        <ResetPassword 
-          token={resetToken} 
-          onSuccess={() => {
-            setResetToken(null);
-            setCurrentScreen('LOGIN');
-          }}
-          onBackToLogin={() => {
-            setResetToken(null);
-            setCurrentScreen('LOGIN');
-          }}
-        />
-      )}
-
-      {currentScreen === 'REGISTER' && (
-        <Register 
-          onRegisterSuccess={() => setCurrentScreen('LOGIN')}
-          onSwitchToLogin={() => setCurrentScreen('LOGIN')}
-          onBackToLanding={() => setCurrentScreen('LANDING')}
-        />
-      )}
-      
-      {currentScreen === 'SPLASH' && (
-        <SplashScreen onComplete={() => setCurrentScreen('DASHBOARD')} />
-      )}
-      
-      {currentScreen === 'DASHBOARD' && (
-        <Dashboard />
-      )}
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </div>
   );
 }

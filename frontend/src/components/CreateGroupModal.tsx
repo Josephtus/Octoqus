@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { apiFetch } from '../utils/api';
+import { groupSchema, type GroupFormData } from '../utils/validations';
 
 interface CreateGroupModalProps {
   onClose: () => void;
@@ -7,24 +10,35 @@ interface CreateGroupModalProps {
 }
 
 export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onSuccess }) => {
-  const [name, setName] = useState('');
-  const [content, setContent] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<GroupFormData>({
+    resolver: zodResolver(groupSchema),
+  });
+
+  const onSubmit = async (data: GroupFormData) => {
+    setServerError(null);
     setLoading(true);
 
     try {
-      await apiFetch('/groups', {
+      const response = await apiFetch('/groups', {
         method: 'POST',
-        body: JSON.stringify({ name, content })
+        body: JSON.stringify(data)
       });
+      
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.message || "Grup oluşturulurken bir hata meydana geldi.");
+      }
+
       onSuccess();
     } catch (err: any) {
-      setError("Grup oluşturulurken bir hata meydana geldi.");
+      setServerError(err.message || "Grup oluşturulurken bir hata meydana geldi.");
     } finally {
       setLoading(false);
     }
@@ -46,34 +60,37 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onS
             </button>
           </div>
 
-          {error && (
+          {serverError && (
             <div className="mb-4 p-3 rounded-lg bg-red-900/40 border border-red-500/50 text-red-200 text-sm text-center">
-              {error}
+              {serverError}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div>
+          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+            <div className="space-y-1">
               <label className="block text-sm font-medium text-slate-400 mb-1">Grup Adı</label>
               <input 
                 type="text" 
-                required
-                className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+                {...register('name')}
+                className={`w-full p-2.5 rounded-xl bg-slate-950 border transition-all text-slate-200 focus:outline-none ${
+                  errors.name ? 'border-red-500/50 focus:border-red-500' : 'border-slate-800 focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff]'
+                }`}
                 placeholder="Örn: Ev Arkadaşları"
               />
+              {errors.name && <p className="text-[10px] text-red-400 ml-1 font-bold">{errors.name.message}</p>}
             </div>
             
-            <div>
+            <div className="space-y-1">
               <label className="block text-sm font-medium text-slate-400 mb-1">Açıklama (Opsiyonel)</label>
               <textarea 
                 rows={3}
-                className="w-full p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 focus:outline-none focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff] transition-all resize-none"
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
+                {...register('content')}
+                className={`w-full p-2.5 rounded-xl bg-slate-950 border transition-all text-slate-200 focus:outline-none resize-none ${
+                  errors.content ? 'border-red-500/50 focus:border-red-500' : 'border-slate-800 focus:border-[#00f0ff] focus:ring-1 focus:ring-[#00f0ff]'
+                }`}
                 placeholder="Grubun amacı..."
               />
+              {errors.content && <p className="text-[10px] text-red-400 ml-1 font-bold">{errors.content.message}</p>}
             </div>
             
             <div className="flex gap-3 mt-4">
@@ -98,3 +115,4 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onS
     </div>
   );
 };
+

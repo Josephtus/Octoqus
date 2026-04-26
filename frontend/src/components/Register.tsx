@@ -1,52 +1,49 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { apiFetch } from '../utils/api';
+import { registerSchema, type RegisterFormData } from '../utils/validations';
 import { User, Mail, Lock, Phone, Calendar, ArrowLeft, ChevronRight, AlertCircle, Sparkles } from 'lucide-react';
 
 interface RegisterProps {
   onRegisterSuccess: () => void;
-  onSwitchToLogin: () => void;
-  onBackToLanding: () => void;
 }
 
-export const Register: React.FC<RegisterProps> = ({ onRegisterSuccess, onSwitchToLogin, onBackToLanding }) => {
-  const [name, setName] = useState('');
-  const [surname, setSurname] = useState('');
-  const [birthday, setBirthday] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+export const Register: React.FC<RegisterProps> = ({ onRegisterSuccess }) => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<string | null>(null);
 
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<RegisterFormData>({
+    resolver: zodResolver(registerSchema),
+  });
+
+  const onSubmit = async (data: RegisterFormData) => {
+    setServerError(null);
     setLoading(true);
     
-    if (!phoneNumber.startsWith('+') || phoneNumber.length < 10) {
-      setError('Telefon numarası uluslararası formatta olmalıdır. Örn: +905551234567');
-      setLoading(false);
-      return;
-    }
-    
     try {
-      await apiFetch('/auth/register', {
+      const response = await apiFetch('/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ 
-          name, 
-          surname, 
-          birthday,
-          phone_number: phoneNumber,
-          mail: email, 
-          password 
-        })
+        body: JSON.stringify(data)
       });
+
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.message || "Kayıt başarısız.");
+      }
+      
       onRegisterSuccess();
       
     } catch (err: any) {
       console.error("Kayıt hatası:", err);
-      setError("Kayıt sırasında bir hata oluştu. Lütfen bilgilerinizi kontrol edin.");
+      setServerError(err.message || "Kayıt sırasında bir hata oluştu. Lütfen bilgilerinizi kontrol edin.");
     } finally {
       setLoading(false);
     }
@@ -68,7 +65,7 @@ export const Register: React.FC<RegisterProps> = ({ onRegisterSuccess, onSwitchT
         {/* Back Button */}
         <motion.button
           whileHover={{ x: -5 }}
-          onClick={onBackToLanding}
+          onClick={() => navigate('/')}
           className="group mb-8 flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
         >
           <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center group-hover:border-[#b026ff]/50 transition-all">
@@ -88,19 +85,19 @@ export const Register: React.FC<RegisterProps> = ({ onRegisterSuccess, onSwitchT
           </div>
 
           <AnimatePresence mode="wait">
-            {error && (
+            {serverError && (
               <motion.div 
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 className="mb-8 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-3"
               >
                 <AlertCircle size={16} />
-                {error}
+                {serverError}
               </motion.div>
             )}
           </AnimatePresence>
 
-          <form onSubmit={handleRegister} className="space-y-6">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Ad</label>
@@ -110,24 +107,26 @@ export const Register: React.FC<RegisterProps> = ({ onRegisterSuccess, onSwitchT
                   </div>
                   <input 
                     type="text" 
-                    required
-                    className="w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-950/50 border border-white/5 text-white placeholder:text-slate-600 focus:outline-none focus:border-[#b026ff]/50 focus:bg-slate-950 transition-all"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    {...register('name')}
+                    className={`w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-950/50 border transition-all ${
+                      errors.name ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#b026ff]/50'
+                    } text-white placeholder:text-slate-600 focus:outline-none focus:bg-slate-950`}
                     placeholder="Can"
                   />
                 </div>
+                {errors.name && <p className="text-[10px] text-red-400 ml-1 font-bold">{errors.name.message}</p>}
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Soyad</label>
                 <input 
                   type="text" 
-                  required
-                  className="w-full px-6 py-4 rounded-2xl bg-slate-950/50 border border-white/5 text-white placeholder:text-slate-600 focus:outline-none focus:border-[#b026ff]/50 focus:bg-slate-950 transition-all"
-                  value={surname}
-                  onChange={(e) => setSurname(e.target.value)}
+                  {...register('surname')}
+                  className={`w-full px-6 py-4 rounded-2xl bg-slate-950/50 border transition-all ${
+                    errors.surname ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#b026ff]/50'
+                  } text-white placeholder:text-slate-600 focus:outline-none focus:bg-slate-950`}
                   placeholder="Yılmaz"
                 />
+                {errors.surname && <p className="text-[10px] text-red-400 ml-1 font-bold">{errors.surname.message}</p>}
               </div>
             </div>
 
@@ -139,13 +138,17 @@ export const Register: React.FC<RegisterProps> = ({ onRegisterSuccess, onSwitchT
                 </div>
                 <input 
                   type="date" 
-                  required
-                  className="w-full pl-12 pr-6 py-4 rounded-2xl bg-slate-950/50 border border-white/5 text-white focus:outline-none focus:border-[#b026ff]/50 focus:bg-slate-950 transition-all [color-scheme:dark]"
-                  value={birthday}
-                  onChange={(e) => setBirthday(e.target.value)}
+                  {...register('birthday')}
+                  className={`w-full pl-12 pr-6 py-4 rounded-2xl bg-slate-950/50 border transition-all ${
+                    errors.birthday ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#b026ff]/50'
+                  } text-white focus:outline-none focus:bg-slate-950 [color-scheme:dark]`}
                 />
               </div>
-              <p className="text-[10px] text-slate-500 ml-1">Yaşınız bu tarihe göre otomatik hesaplanacaktır.</p>
+              {errors.birthday ? (
+                <p className="text-[10px] text-red-400 ml-1 font-bold">{errors.birthday.message}</p>
+              ) : (
+                <p className="text-[10px] text-slate-500 ml-1">Yaşınız bu tarihe göre otomatik hesaplanacaktır.</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -156,13 +159,14 @@ export const Register: React.FC<RegisterProps> = ({ onRegisterSuccess, onSwitchT
                 </div>
                 <input 
                   type="tel" 
-                  required
-                  className="w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-950/50 border border-white/5 text-white placeholder:text-slate-600 focus:outline-none focus:border-[#b026ff]/50 focus:bg-slate-950 transition-all"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  {...register('phone_number')}
+                  className={`w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-950/50 border transition-all ${
+                    errors.phone_number ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#b026ff]/50'
+                  } text-white placeholder:text-slate-600 focus:outline-none focus:bg-slate-950`}
                   placeholder="+905551234567"
                 />
               </div>
+              {errors.phone_number && <p className="text-[10px] text-red-400 ml-1 font-bold">{errors.phone_number.message}</p>}
             </div>
 
             <div className="space-y-2">
@@ -173,13 +177,14 @@ export const Register: React.FC<RegisterProps> = ({ onRegisterSuccess, onSwitchT
                 </div>
                 <input 
                   type="email" 
-                  required
-                  className="w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-950/50 border border-white/5 text-white placeholder:text-slate-600 focus:outline-none focus:border-[#b026ff]/50 focus:bg-slate-950 transition-all"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  {...register('mail')}
+                  className={`w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-950/50 border transition-all ${
+                    errors.mail ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#b026ff]/50'
+                  } text-white placeholder:text-slate-600 focus:outline-none focus:bg-slate-950`}
                   placeholder="isim@sirket.com"
                 />
               </div>
+              {errors.mail && <p className="text-[10px] text-red-400 ml-1 font-bold">{errors.mail.message}</p>}
             </div>
 
             <div className="space-y-2">
@@ -190,14 +195,14 @@ export const Register: React.FC<RegisterProps> = ({ onRegisterSuccess, onSwitchT
                 </div>
                 <input 
                   type="password" 
-                  required
-                  minLength={8}
-                  className="w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-950/50 border border-white/5 text-white placeholder:text-slate-600 focus:outline-none focus:border-[#b026ff]/50 focus:bg-slate-950 transition-all"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  {...register('password')}
+                  className={`w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-950/50 border transition-all ${
+                    errors.password ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#b026ff]/50'
+                  } text-white placeholder:text-slate-600 focus:outline-none focus:bg-slate-950`}
                   placeholder="Min. 8 karakter"
                 />
               </div>
+              {errors.password && <p className="text-[10px] text-red-400 ml-1 font-bold">{errors.password.message}</p>}
             </div>
 
             <button 
@@ -218,7 +223,7 @@ export const Register: React.FC<RegisterProps> = ({ onRegisterSuccess, onSwitchT
           <div className="mt-10 pt-8 border-t border-white/5 text-center">
             <p className="text-slate-400 text-sm mb-4">Zaten bir hesabınız var mı?</p>
             <button 
-              onClick={onSwitchToLogin}
+              onClick={() => navigate('/login')}
               className="px-8 py-3 rounded-xl bg-white/5 border border-white/10 text-white font-bold text-sm hover:bg-white/10 transition-all"
             >
               Giriş Yap

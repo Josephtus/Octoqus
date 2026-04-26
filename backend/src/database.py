@@ -81,40 +81,40 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 async def init_db() -> None:
     """
     Alembic migration çalıştırılmadan önce tabloları oluşturur.
-    Production'da yerine `alembic upgrade head` kullanılmalıdır.
     """
     async with engine.begin() as conn:
+        # 1. Tabloları oluştur (yoksa)
         await conn.run_sync(Base.metadata.create_all)
         
-        # Manuel Migration: Yeni sütunları ekle (yoksa)
+        # 2. Manuel Migrationlar (Opsiyonel/Hızlı Kontroller)
+        # Sadece kolonlar yoksa ekle
         from sqlalchemy import text
-        try:
-            await conn.execute(text("ALTER TABLE reports ADD COLUMN category VARCHAR(50) NOT NULL DEFAULT 'GENEL'"))
-        except Exception: pass
+        
+        # Mevcut kolonları kontrol et (MySQL için)
+        async def column_exists(table, column):
+            res = await conn.execute(text(f"SHOW COLUMNS FROM `{table}` LIKE '{column}'"))
+            return res.fetchone() is not None
 
-        try:
-            await conn.execute(text("ALTER TABLE expenses ADD COLUMN is_settlement BOOLEAN NOT NULL DEFAULT FALSE"))
-        except Exception: pass
+        # Sadece eksik kolonları ekle
+        if not await column_exists("reports", "category"):
+            try: await conn.execute(text("ALTER TABLE reports ADD COLUMN category VARCHAR(50) NOT NULL DEFAULT 'GENEL'"))
+            except: pass
 
-        try:
-            await conn.execute(text("ALTER TABLE expenses ADD COLUMN recipient_id INTEGER REFERENCES users(id)"))
-        except Exception: pass
+        if not await column_exists("expenses", "is_settlement"):
+            try: await conn.execute(text("ALTER TABLE expenses ADD COLUMN is_settlement BOOLEAN NOT NULL DEFAULT FALSE"))
+            except: pass
 
-        try:
-            # ENUM değerlerini Python modelindeki gibi (lowercase) kullan
-            try:
-                await conn.execute(text("ALTER TABLE expenses ADD COLUMN settlement_status ENUM('PENDING', 'APPROVED', 'REJECTED') NULL"))
-            except Exception:
-                await conn.execute(text("ALTER TABLE expenses MODIFY COLUMN settlement_status ENUM('PENDING', 'APPROVED', 'REJECTED') NULL"))
-        except Exception: pass
+        if not await column_exists("expenses", "recipient_id"):
+            try: await conn.execute(text("ALTER TABLE expenses ADD COLUMN recipient_id INTEGER REFERENCES users(id)"))
+            except: pass
 
-        try:
-            await conn.execute(text("ALTER TABLE expenses ADD COLUMN category VARCHAR(100) NULL"))
-        except Exception: pass
+        if not await column_exists("expenses", "category"):
+            try: await conn.execute(text("ALTER TABLE expenses ADD COLUMN category VARCHAR(100) NULL"))
+            except: pass
 
-        try:
-            await conn.execute(text("ALTER TABLE groups ADD COLUMN custom_categories TEXT NULL"))
-        except Exception: pass
+        if not await column_exists("groups", "custom_categories"):
+            try: await conn.execute(text("ALTER TABLE groups ADD COLUMN custom_categories TEXT NULL"))
+            except: pass
 
 
 async def dispose_engine() -> None:

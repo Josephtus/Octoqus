@@ -17,13 +17,19 @@ import logging
 import os
 from pathlib import Path
 
+# WORKER TIMEOUT FIX: Sanic Manager reads these from environment
+os.environ["SANIC_WORKER_STARTUP_TIMEOUT"] = "60.0"
+os.environ["SANIC_GRACEFUL_SHUTDOWN_TIMEOUT"] = "60.0"
+
 import redis.asyncio as aioredis
 import structlog
 from sanic import Request, Sanic
-#from sanic.exceptions import TooManyRequests
 from sanic.response import HTTPResponse, json as sanic_json
 from sanic_ext import Extend
 from src.database import dispose_engine, init_db
+from src.services.pubsub import PubSubManager
+from sqlalchemy.exc import SQLAlchemyError
+from redis.exceptions import RedisError
 
 # ---------------------------------------------------------------------------
 # Structlog Yapılandırması — JSON formatında loglama (Docker log aggregation uyumlu)
@@ -53,7 +59,13 @@ app = Sanic("Octoqus")
 app.config.update(
     {
         "DEBUG": os.getenv("SANIC_DEBUG", "false").lower() == "true",
-        "OAS": False,                   # OpenAPI Spec (sanic-ext) — ileride aktif edilebilir
+        "OAS": True,                    # OpenAPI Spec (sanic-ext) — AKTİF EDİLDİ
+        "OAS_UI_SWAGGER": True,         # /docs üzerinden Swagger UI
+        "OAS_UI_REDOC": True,           # /redoc üzerinden Redoc UI
+        "OAS_URL_PREFIX": "/api/docs",  # Dokümantasyon URL'i
+        "OAS_TITLE": "Octoqus API Documentation",
+        "OAS_VERSION": "1.0.0",
+        "OAS_DESCRIPTION": "Octoqus Gider Takip ve Sosyal Finans Platformu API Dokümantasyonu.",
         "CORS_ORIGINS": "*",            # Görev 5'te kısıtlanacak
         "CORS_ALLOW_HEADERS": "Authorization, Content-Type, *",
         "CORS_METHODS": "*",
@@ -85,7 +97,7 @@ async def setup_database(application: Sanic, loop) -> None:
     try:
         await init_db()
         logger.info("database.ready")
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         logger.error("database.connection_failed", error=str(exc))
         raise
 
@@ -114,7 +126,12 @@ async def setup_redis(application: Sanic, loop) -> None:
         # Bağlantıyı doğrula
         pong = await application.ctx.redis.ping()
         logger.info("redis.ready", pong=pong)
-    except Exception as exc:
+
+        # PubSub Manager'ı Başlat (Shared Listener)
+        application.ctx.pubsub_manager = PubSubManager(application.ctx.redis)
+        await application.ctx.pubsub_manager.start()
+        logger.info("pubsub.manager.ready")
+    except RedisError as exc:
         logger.error("redis.connection_failed", error=str(exc))
         raise
 
@@ -133,6 +150,7 @@ async def setup_upload_dirs(application: Sanic, loop) -> None:
     for subdir in subdirs:
         (upload_root / subdir).mkdir(parents=True, exist_ok=True)
     logger.info("uploads.dirs_ready", path=str(upload_root.resolve()))
+    logger.info("worker.ready_signal_sent")
 
 
 # =============================================================================
@@ -154,6 +172,11 @@ async def teardown_redis(application: Sanic, loop) -> None:
     """Redis bağlantı havuzunu temizce kapatır."""
     if hasattr(application.ctx, "redis"):
         logger.info("redis.closing")
+        
+        # PubSub Manager'ı kapat
+        if hasattr(application.ctx, "pubsub_manager"):
+            await application.ctx.pubsub_manager.stop()
+            
         await application.ctx.redis.aclose()
         logger.info("redis.closed")
 
@@ -208,7 +231,7 @@ async def rate_limit_middleware(request: Request) -> None:
                 }
             )
     
-    except Exception as exc:
+    except RedisError as exc:
         # Redis hatası → rate limiting devre dışı, isteği geçir (fail-open)
         logger.warning("rate_limit.redis_error", error=str(exc), ip=client_ip)
 
@@ -261,7 +284,7 @@ async def health_check(request: Request) -> HTTPResponse:
     try:
         pong = await request.app.ctx.redis.ping()
         checks["redis"] = "ok" if pong else "degraded"
-    except Exception as exc:
+    except RedisError as exc:
         checks["redis"] = f"error: {exc}"
         checks["status"] = "degraded"
 

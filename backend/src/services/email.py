@@ -42,12 +42,10 @@ async def send_password_reset_email(to_email: str, reset_token: str) -> None:
     message["Subject"] = "Şifre Sıfırlama İsteği - Octoqus"
 
     # Plain text version
-    body = f"""Merhaba,
+    body = f"""Şifrenizi sıfırlamak için butona tıklayabilir veya bağlantıya gidebilirsiniz.
+(Bu bağlantı 15 dakika boyunca geçerlidir)
 
-Hesabınızın şifresini sıfırlamak için bir istek aldık.
-Aşağıdaki bağlantıyı kullanarak şifrenizi sıfırlayabilirsiniz:
-
-{reset_link}
+Bağlantı: {reset_link}
 
 Bu bağlantı 15 dakika boyunca geçerlidir.
 Eğer bu isteği siz yapmadıysanız lütfen bu e-postayı dikkate almayın.

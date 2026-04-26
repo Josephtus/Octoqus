@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../utils/api';
+import { useGroupStore } from '../store/groupStore';
 
 interface Member {
   user_id: number;
@@ -23,12 +24,10 @@ interface GroupInfo {
   content: string;
 }
 
-interface GroupManagementProps {
-  groupId: number;
-  onUpdate: () => void;
-}
+export const GroupManagement: React.FC = () => {
+  const { activeGroup, triggerRefresh } = useGroupStore();
+  const groupId = activeGroup?.id;
 
-export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpdate }) => {
   const [members, setMembers] = useState<Member[]>([]);
   const [bannedUsers, setBannedUsers] = useState<BannedUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,6 +35,7 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
   const [updateLoading, setUpdateLoading] = useState(false);
 
   const fetchMembers = async () => {
+    if (!groupId) return;
     try {
       const res = await apiFetch(`/groups/${groupId}/members`);
       const data = await res.json();
@@ -46,6 +46,7 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
   };
 
   const fetchGroupInfo = async () => {
+    if (!groupId) return;
     try {
       const res = await apiFetch(`/groups/${groupId}`);
       const data = await res.json();
@@ -56,6 +57,7 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
   };
 
   const fetchBans = async () => {
+    if (!groupId) return;
     try {
       const res = await apiFetch(`/groups/${groupId}/bans`);
       const data = await res.json();
@@ -66,21 +68,24 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
   };
 
   useEffect(() => {
+    if (!groupId) return;
     setLoading(true);
     Promise.all([fetchMembers(), fetchGroupInfo(), fetchBans()]).finally(() => setLoading(false));
   }, [groupId]);
 
   const handleApprove = async (userId: number) => {
+    if (!groupId) return;
     try {
       await apiFetch(`/groups/${groupId}/approve/${userId}`, { method: 'POST' });
       fetchMembers();
-      onUpdate();
+      triggerRefresh();
     } catch (err) {
       alert("Onaylama başarısız");
     }
   };
 
   const handleReject = async (userId: number) => {
+    if (!groupId) return;
     if (!window.confirm("Bu isteği reddetmek istediğinize emin misiniz?")) return;
     try {
       await apiFetch(`/groups/${groupId}/requests/${userId}`, { method: 'DELETE' });
@@ -91,32 +96,35 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
   };
 
   const handleKick = async (userId: number) => {
+    if (!groupId) return;
     if (!window.confirm("Bu üyeyi gruptan atmak istediğinize emin misiniz?")) return;
     try {
       await apiFetch(`/groups/${groupId}/members/${userId}`, { method: 'DELETE' });
       fetchMembers();
-      onUpdate();
+      triggerRefresh();
     } catch (err) {
       alert("İşlem başarısız");
     }
   };
 
   const handleBan = async (userId: number) => {
+    if (!groupId) return;
     if (!window.confirm("Bu üyeyi banlamak istediğinize emin misiniz? Bir daha katılamayacaktır.")) return;
     try {
       await apiFetch(`/groups/${groupId}/ban/${userId}`, { method: 'POST' });
       fetchMembers();
-      onUpdate();
+      triggerRefresh();
     } catch (err) {
       alert("Banlama başarısız");
     }
   };
 
   const handleTransfer = async (userId: number) => {
+    if (!groupId) return;
     if (!window.confirm("Liderliği bu üyeye devretmek istediğinize emin misiniz? Bu işlemden sonra yönetici yetkinizi kaybedeceksiniz.")) return;
     try {
       await apiFetch(`/groups/${groupId}/transfer_leadership/${userId}`, { method: 'POST' });
-      onUpdate();
+      triggerRefresh();
       window.location.reload(); 
     } catch (err) {
       alert("Devir başarısız");
@@ -124,6 +132,7 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
   };
 
   const handleUnban = async (userId: number) => {
+    if (!groupId) return;
     try {
       await apiFetch(`/groups/${groupId}/ban/${userId}`, { method: 'DELETE' });
       fetchBans();
@@ -133,6 +142,7 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
   };
 
   const handleUpdateGroup = async (e: React.FormEvent) => {
+    if (!groupId) return;
     e.preventDefault();
     setUpdateLoading(true);
     try {
@@ -141,13 +151,15 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
         body: JSON.stringify(groupInfo)
       });
       alert("Grup bilgileri güncellendi");
-      onUpdate();
+      triggerRefresh();
     } catch (err) {
       alert("Güncelleme başarısız");
     } finally {
       setUpdateLoading(false);
     }
   };
+
+  if (!groupId) return null;
 
   if (loading) return <div className="text-[#00f0ff] animate-pulse p-10 text-center">Yükleniyor...</div>;
 
@@ -156,7 +168,6 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
 
   return (
     <div className="max-w-5xl mx-auto space-y-10 pb-20 animate-fade-in">
-      {/* Grup Bilgileri Güncelleme */}
       <section className="bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-xl">
         <h3 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2">
           <span className="w-2 h-8 bg-[#b026ff] rounded-full"></span>
@@ -192,7 +203,6 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
         </form>
       </section>
 
-      {/* Bekleyen İstekler */}
       <section className="bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-xl">
         <h3 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2">
           <span className="w-2 h-8 bg-orange-500 rounded-full"></span>
@@ -215,7 +225,6 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
         </div>
       </section>
 
-      {/* Üyeler */}
       <section className="bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-xl">
         <h3 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2">
           <span className="w-2 h-8 bg-[#00f0ff] rounded-full"></span>
@@ -258,7 +267,6 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({ groupId, onUpd
         </div>
       </section>
 
-      {/* Banlı Kullanıcılar */}
       <section className="bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-xl">
         <h3 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2">
           <span className="w-2 h-8 bg-red-600 rounded-full"></span>

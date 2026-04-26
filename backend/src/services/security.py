@@ -21,7 +21,61 @@ import structlog
 from sanic import Request
 from sanic.exceptions import Forbidden, Unauthorized
 
+from sanic.response import json as sanic_json
+from redis.exceptions import RedisError
+
 logger = structlog.get_logger(__name__)
+
+# =============================================================================
+# BÖLÜM 0: @rate_limit — Özel Rate Limit Decorator'ı
+# =============================================================================
+
+def rate_limit(limit: int, window: int = 60, key_prefix: str = "rate_limit_route"):
+    """
+    Belirli bir route için IP bazlı rate limiting uygular.
+    
+    Args:
+        limit: Pencere içindeki maksimum istek sayısı
+        window: Saniye cinsinden zaman penceresi (default: 60)
+        key_prefix: Redis anahtarı için ön ek
+    """
+    def decorator(f: Callable) -> Callable:
+        @wraps(f)
+        async def wrapper(request: Request, *args: Any, **kwargs: Any) -> Any:
+            client_ip: str = (
+                request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                or request.ip
+                or "unknown"
+            )
+            
+            redis = request.app.ctx.redis
+            # Endpoint path'ini de anahtara ekle ki farklı uçlar birbirini etkilemesin
+            key = f"{key_prefix}:{request.path}:{client_ip}"
+            
+            try:
+                current = await redis.incr(key)
+                if current == 1:
+                    await redis.expire(key, window)
+                
+                if current > limit:
+                    ttl = await redis.ttl(key)
+                    logger.warning("security.rate_limit_exceeded", ip=client_ip, path=request.path, limit=limit)
+                    return sanic_json(
+                        {
+                            "error": "Rate limit exceeded",
+                            "message": f"Bu işlem için limit aşıldı. Lütfen {ttl} saniye sonra tekrar deneyin.",
+                            "retry_after": ttl
+                        },
+                        status=429,
+                        headers={"Retry-After": str(ttl)}
+                    )
+            except RedisError as exc:
+                # Redis hatası durumunda işlemi engelleme (fail-open)
+                logger.error("security.rate_limit.redis_error", error=str(exc))
+            
+            return await f(request, *args, **kwargs)
+        return wrapper
+    return decorator
 
 # ---------------------------------------------------------------------------
 # Ortam Değişkenleri (runtime'da okunur — import sırasında crash olmaması için)

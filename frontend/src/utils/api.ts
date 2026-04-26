@@ -37,7 +37,7 @@ export const apiFetch = async (endpoint: string, options: RequestInit = {}) => {
 
   return response;
 };
-export const getImageUrl = (path: string | null) => {
+export const getImageUrl = (path: string | null | undefined) => {
   if (!path) return null;
   const baseUrl = 'http://localhost:8000';
   return `${baseUrl}${path.startsWith('/') ? path : '/' + path}`;

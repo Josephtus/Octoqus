@@ -19,13 +19,16 @@ from sanic import Blueprint, Request
 from sanic.exceptions import BadRequest, NotFound, Unauthorized
 from sanic.response import HTTPResponse, json as sanic_json
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
+from sanic_ext import openapi
 from src.database import get_session
 from src.models import GlobalRole, User
 from src.services.security import (
     create_access_token,
     hash_password,
     protected,
+    rate_limit,
     verify_password,
 )
 from src.services.email import send_password_reset_email
@@ -172,6 +175,12 @@ def _build_user_response(user: User) -> dict:
 # =============================================================================
 
 @auth_bp.post("/register")
+@rate_limit(limit=5, window=60, key_prefix="rl_auth")
+@openapi.summary("Yeni kullanıcı kaydı")
+@openapi.description("Sistemde yeni bir kullanıcı hesabı oluşturur. E-posta ve telefon numarası benzersiz olmalıdır.")
+@openapi.body({"application/json": RegisterRequest})
+@openapi.response(201, {"application/json": dict}, "Kayıt başarılı")
+@openapi.response(400, {"application/json": dict}, "Validasyon veya duplicate hatası")
 async def register(request: Request) -> HTTPResponse:
     """
     Yeni kullanıcı kaydı.
@@ -206,46 +215,58 @@ async def register(request: Request) -> HTTPResponse:
 
     # ── 2. Duplicate Kontrol ─────────────────────────────────────────────────
     async with get_session() as session:
-        existing_user = await _get_user_by_email(session, data.mail)
-        if existing_user:
-            logger.warning("auth.register.duplicate_email", mail=data.mail)
-            raise BadRequest("Bu e-posta adresi zaten kayıtlı.")
+        # Pydantic validation handles basic format, now check uniqueness
+        try:
+            # Check existing user
+            existing_user = await _get_user_by_email(session, data.mail)
+            if existing_user:
+                logger.warning("auth.register.duplicate_email", mail=data.mail)
+                raise BadRequest("Bu e-posta adresi zaten kayıtlı.")
 
-        if data.phone_number:
-            existing_phone = await _get_user_by_phone(session, data.phone_number)
-            if existing_phone:
-                logger.warning("auth.register.duplicate_phone", phone=data.phone_number)
-                raise BadRequest("Bu telefon numarası zaten kayıtlı.")
+            if data.phone_number:
+                existing_phone = await _get_user_by_phone(session, data.phone_number)
+                if existing_phone:
+                    logger.warning("auth.register.duplicate_phone", phone=data.phone_number)
+                    raise BadRequest("Bu telefon numarası zaten kayıtlı.")
 
-        # ── 3. Şifre Hashleme & Kullanıcı Oluşturma ─────────────────────────
-        hashed_pw = hash_password(data.password)
+            # ── 3. Şifre Hashleme & Kullanıcı Oluşturma ─────────────────────────
+            hashed_pw = hash_password(data.password)
 
-        new_user = User(
-            name=data.name,
-            surname=data.surname,
-            mail=data.mail,
-            password=hashed_pw,          # Düz metin ASLA saklanmaz
-            phone_number=data.phone_number,
-            age=data.age if data.age is not None else (date.today().year - date.fromisoformat(data.birthday).year - ((date.today().month, date.today().day) < (date.fromisoformat(data.birthday).month, date.fromisoformat(data.birthday).day))),
-            birthday=date.fromisoformat(data.birthday),
-            role=GlobalRole.USER,        # Yeni kayıtlar her zaman USER rolüyle başlar
-            is_active=True,
-        )
+            new_user = User(
+                name=data.name,
+                surname=data.surname,
+                mail=data.mail,
+                password=hashed_pw,          # Düz metin ASLA saklanmaz
+                phone_number=data.phone_number,
+                age=data.age if data.age is not None else (date.today().year - date.fromisoformat(data.birthday).year - ((date.today().month, date.today().day) < (date.fromisoformat(data.birthday).month, date.fromisoformat(data.birthday).day))),
+                birthday=date.fromisoformat(data.birthday),
+                role=GlobalRole.USER,        # Yeni kayıtlar her zaman USER rolüyle başlar
+                is_active=True,
+            )
 
-        # Veritabanına ekle
-        session.add(new_user)
-        await session.flush()  # ID alabilmek için
-        await session.refresh(new_user) # İlişkileri/alanları yükle
+            # Veritabanına ekle
+            session.add(new_user)
+            await session.flush()  # ID alabilmek için
+            await session.refresh(new_user) # İlişkileri/alanları yükle
 
-        logger.info("auth.registered", user_id=new_user.id, mail=new_user.mail)
+            logger.info("auth.registered", user_id=new_user.id, mail=new_user.mail)
 
-        return sanic_json(
-            {
-                "message": "Kayıt başarıyla tamamlandı. Giriş yapabilirsiniz.",
-                "user": _build_user_response(new_user),
-            },
-            status=201,
-        )
+            return sanic_json(
+                {
+                    "message": "Kayıt başarıyla tamamlandı. Giriş yapabilirsiniz.",
+                    "user": _build_user_response(new_user),
+                },
+                status=201,
+            )
+        except IntegrityError as exc:
+            # Catching low-level DB unique constraints if race condition occurs
+            logger.error("auth.register.integrity_error", error=str(exc))
+            await session.rollback()
+            raise BadRequest("E-posta veya telefon numarası zaten kullanımda.")
+        except SQLAlchemyError as exc:
+            logger.error("auth.register.db_error", error=str(exc))
+            await session.rollback()
+            raise BadRequest("Sunucu hatası: Kayıt işlemi tamamlanamadı.")
 
 
 # =============================================================================
@@ -253,6 +274,12 @@ async def register(request: Request) -> HTTPResponse:
 # =============================================================================
 
 @auth_bp.post("/login")
+@rate_limit(limit=10, window=60, key_prefix="rl_auth")
+@openapi.summary("Kullanıcı girişi")
+@openapi.description("E-posta ve şifre ile giriş yaparak JWT access token alır.")
+@openapi.body({"application/json": LoginRequest})
+@openapi.response(200, {"application/json": dict}, "Giriş başarılı")
+@openapi.response(401, {"application/json": dict}, "Hatalı kimlik bilgileri")
 async def login(request: Request) -> HTTPResponse:
     """
     Kullanıcı girişi ve JWT Access Token üretimi.
@@ -329,6 +356,10 @@ async def login(request: Request) -> HTTPResponse:
 
 @auth_bp.get("/me")
 @protected
+@openapi.summary("Mevcut kullanıcı profilini getir")
+@openapi.description("JWT token kullanarak aktif oturumdaki kullanıcının detaylı profil bilgilerini döner.")
+@openapi.parameter("Authorization", str, location="header", required=True, description="Bearer <token>")
+@openapi.response(200, {"application/json": dict}, "Profil bilgileri")
 async def get_me(request: Request) -> HTTPResponse:
     """
     Geçerli JWT token ile kimliği doğrulanmış kullanıcının profilini döner.
@@ -361,6 +392,7 @@ async def get_me(request: Request) -> HTTPResponse:
 # =============================================================================
 
 @auth_bp.post("/forgot-password")
+@rate_limit(limit=3, window=600, key_prefix="rl_forgot_pw")
 async def forgot_password(request: Request) -> HTTPResponse:
     """
     Kullanıcıya şifre sıfırlama linki/token'ı gönderir.

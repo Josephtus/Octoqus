@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../utils/api';
 import { motion, AnimatePresence } from 'framer-motion';
-
-interface DebtListProps {
-  groupId: number;
-  currentUserId?: number;
-}
+import { useAuthStore } from '../store/authStore';
+import { useGroupStore } from '../store/groupStore';
+import { X } from 'lucide-react';
 
 interface Transaction {
   from_user_id: number;
@@ -31,7 +29,12 @@ interface DebtData {
   transactions?: Transaction[];
 }
 
-export const DebtList: React.FC<DebtListProps> = ({ groupId, currentUserId }) => {
+export const DebtList: React.FC = () => {
+  const { user } = useAuthStore();
+  const { activeGroup } = useGroupStore();
+  const groupId = activeGroup?.id;
+  const currentUserId = user?.id;
+
   const [debtData, setDebtData] = useState<DebtData | null>(null);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -39,6 +42,7 @@ export const DebtList: React.FC<DebtListProps> = ({ groupId, currentUserId }) =>
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = async () => {
+    if (!groupId) return;
     setLoading(true);
     setError(null);
     try {
@@ -70,6 +74,7 @@ export const DebtList: React.FC<DebtListProps> = ({ groupId, currentUserId }) =>
   }, [groupId]);
 
   const handlePayRequest = async (toUserId: number, amount: number) => {
+    if (!groupId) return;
     if (!window.confirm(`${amount.toFixed(2)} TL tutarında ödeme bildirimini göndermek istediğinize emin misiniz?`)) return;
     setActionLoading(toUserId);
     try {
@@ -91,6 +96,7 @@ export const DebtList: React.FC<DebtListProps> = ({ groupId, currentUserId }) =>
   };
 
   const handleAction = async (settlementId: number, action: 'approve' | 'reject') => {
+    if (!groupId) return;
     setActionLoading(settlementId);
     try {
       const res = await apiFetch(`/expenses/${groupId}/settlements/${settlementId}/${action}`, { method: 'POST' });
@@ -105,6 +111,26 @@ export const DebtList: React.FC<DebtListProps> = ({ groupId, currentUserId }) =>
       setActionLoading(null);
     }
   };
+
+  const handleCancel = async (settlementId: number) => {
+    if (!groupId) return;
+    if (!window.confirm("Ödeme bildirimini iptal etmek istediğinize emin misiniz?")) return;
+    setActionLoading(settlementId);
+    try {
+      const res = await apiFetch(`/expenses/${groupId}/${settlementId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || 'İşlem başarısız.');
+      }
+      fetchData();
+    } catch (err: any) {
+      alert(err.message || "İşlem başarısız.");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  if (!groupId) return null;
 
   if (loading) {
     return (
@@ -145,7 +171,6 @@ export const DebtList: React.FC<DebtListProps> = ({ groupId, currentUserId }) =>
 
   return (
     <div className="space-y-8 animate-fade-in pb-10">
-      {/* Onay Bekleyenler (Bana Gelenler) */}
       <AnimatePresence>
         {myActionNeeded.length > 0 && (
           <motion.div 
@@ -195,7 +220,6 @@ export const DebtList: React.FC<DebtListProps> = ({ groupId, currentUserId }) =>
         )}
       </AnimatePresence>
 
-      {/* Özet Kartları */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="bg-slate-900/40 border border-white/5 p-8 rounded-[2.5rem] backdrop-blur-3xl shadow-xl relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 blur-3xl -mr-10 -mt-10 group-hover:bg-red-500/10 transition-all duration-700" />
@@ -246,7 +270,6 @@ export const DebtList: React.FC<DebtListProps> = ({ groupId, currentUserId }) =>
                 key={idx} 
                 className="group relative flex flex-col sm:flex-row items-center justify-between p-6 bg-slate-950/40 border border-white/5 rounded-[2.5rem] hover:bg-slate-800/40 hover:border-white/10 transition-all duration-500 shadow-sm"
               >
-                {/* Kullanıcılar arası akış */}
                 <div className="flex items-center gap-4 text-lg flex-1">
                   <div className="flex flex-col">
                     <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">{isIDebt ? 'KİME ÖDEYECEKSİNİZ' : 'KİMDEN ALACAKSINIZ'}</span>
@@ -259,7 +282,6 @@ export const DebtList: React.FC<DebtListProps> = ({ groupId, currentUserId }) =>
                   </div>
                 </div>
                 
-                {/* Miktar ve Aksiyon */}
                 <div className="mt-6 sm:mt-0 flex items-center gap-4">
                    <div className="flex items-center gap-3 px-6 py-4 bg-slate-950/50 rounded-2xl border border-white/5 group-hover:border-white/10 transition-all">
                       <div className="flex flex-col items-end">
@@ -272,43 +294,35 @@ export const DebtList: React.FC<DebtListProps> = ({ groupId, currentUserId }) =>
                    </div>
 
                    {isIDebt && (
-                     <div className="flex items-center gap-2">
-                       {hasPendingRequest ? (
-                         <div className="flex items-center gap-2 px-6 py-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
-                           <div className="flex flex-col">
-                             <span className="text-amber-500 font-black text-[11px] uppercase tracking-wider">Ödeme Onay Bekliyor</span>
-                             <span className="text-amber-500/60 text-[8px] font-bold uppercase tracking-widest">Alacaklı Onayı Gerekiyor</span>
-                           </div>
-                           <button 
-                             onClick={async () => {
-                               if(window.confirm("Ödeme bildirimini iptal etmek (geri çekmek) istiyor musunuz?")) {
-                                 try {
-                                   await apiFetch(`/expenses/${groupId}/${pendingReq.id}`, { method: 'DELETE' });
-                                   fetchData();
-                                 } catch (err: any) {
-                                   alert("İptal işlemi başarısız.");
-                                 }
-                               }
-                             }}
-                             className="w-8 h-8 bg-amber-500/20 rounded-lg flex items-center justify-center text-amber-500 hover:bg-amber-500 hover:text-slate-950 transition-all"
-                             title="Ödemeyi İptal Et"
-                           >
-                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                             </svg>
-                           </button>
-                         </div>
-                       ) : (
-                         <button 
-                           onClick={() => handlePayRequest(tx.to_user_id, tx.amount)}
-                           disabled={actionLoading !== null}
-                           className="px-10 py-4 bg-[#00f0ff] text-slate-950 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all shadow-xl hover:scale-105 hover:shadow-[0_0_20px_#00f0ff44]"
-                         >
-                           ÖDE
-                         </button>
-                       )}
-                     </div>
-                   )}
+                      <div className="flex items-center gap-2">
+                        {hasPendingRequest ? (
+                          <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2 px-6 py-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
+                               <div className="flex flex-col">
+                                 <span className="text-amber-500 font-black text-[11px] uppercase tracking-wider">Ödeme Onay Bekliyor</span>
+                                 <span className="text-amber-500/60 text-[8px] font-bold uppercase tracking-widest">Alacaklı Onayı Gerekiyor</span>
+                               </div>
+                            </div>
+                            <button 
+                              onClick={() => handleCancel(pendingReq.id)}
+                              disabled={actionLoading === pendingReq.id}
+                              className="w-12 h-12 flex items-center justify-center rounded-2xl bg-slate-900 border border-white/5 text-slate-500 hover:text-red-500 hover:border-red-500/30 transition-all shadow-lg active:scale-90"
+                              title="İptal Et"
+                            >
+                              <X size={18} />
+                            </button>
+                          </div>
+                        ) : (
+                          <button 
+                            onClick={() => handlePayRequest(tx.to_user_id, tx.amount)}
+                            disabled={actionLoading !== null}
+                            className="px-10 py-4 bg-[#00f0ff] text-slate-950 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] transition-all shadow-xl hover:scale-105 hover:shadow-[0_0_20px_#00f0ff44]"
+                          >
+                            ÖDE
+                          </button>
+                        )}
+                      </div>
+                    )}
                 </div>
               </div>
             );

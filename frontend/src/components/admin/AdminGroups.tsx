@@ -335,7 +335,7 @@ export const AdminGroups: React.FC = () => {
                               <div className="text-slate-100 font-bold">{member.name} {member.surname}</div>
                               <div className="text-[10px] text-slate-500">{member.mail}</div>
                             </div>
-                            <span className={`text-[10px] font-black px-2 py-1 rounded ${member.role === 'GROUP_LEADER' ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-800 text-slate-400'}`}>
+                            <span className={`text-[10px] font-black px-2 py-1 rounded ${member.role?.toUpperCase() === 'GROUP_LEADER' ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-800 text-slate-400'}`}>
                               {member.role}
                             </span>
                           </div>

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { apiFetch, getImageUrl } from '../../utils/api';
+import { apiFetch } from '../../utils/api';
 import { Pagination } from '../common/Pagination';
 
 interface SortHeaderProps {
@@ -255,8 +255,8 @@ export const AdminUsers: React.FC = () => {
                         </td>
                         <td className="py-4 px-3">
                           <span className={`text-[9px] font-black px-2 py-0.5 rounded w-fit ${
-                            user.role === 'ADMIN' ? 'bg-[#00f0ff]/10 text-[#00f0ff]' :
-                            user.role === 'GROUP_LEADER' ? 'bg-purple-500/10 text-purple-400' :
+                            user.role?.toUpperCase() === 'ADMIN' ? 'bg-[#00f0ff]/10 text-[#00f0ff]' :
+                            user.role?.toUpperCase() === 'GROUP_LEADER' ? 'bg-purple-500/10 text-purple-400' :
                             'bg-slate-700 text-slate-400'
                           }`}>
                             {user.role}
@@ -372,7 +372,7 @@ export const AdminUsers: React.FC = () => {
                               <span className="text-slate-200 font-bold text-sm block">{m.group_name}</span>
                               <span className="text-[10px] text-slate-500">Katılım: {new Date(m.joined_at).toLocaleDateString()}</span>
                             </div>
-                            <span className={`text-[9px] font-black px-2 py-1 rounded ${m.role === 'GROUP_LEADER' ? 'bg-purple-500/20 text-purple-400' : 'bg-slate-800 text-slate-400'}`}>
+                            <span className={`text-[9px] font-black px-2 py-1 rounded ${m.role?.toUpperCase() === 'GROUP_LEADER' ? 'bg-purple-500/20 text-purple-400' : 'bg-slate-800 text-slate-400'}`}>
                               {m.role}
                             </span>
                           </div>

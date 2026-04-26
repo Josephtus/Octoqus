@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { apiFetch } from '../utils/api';
+import { useAuthStore } from '../store/authStore';
+import { useGroupStore } from '../store/groupStore';
 
 interface Expense {
   id: number;
@@ -17,11 +19,6 @@ interface Category {
   icon: string;
 }
 
-interface GroupInsightsProps {
-  groupId: number;
-  currentUserId?: number;
-}
-
 type FilterType = 'Ay' | 'Yıl' | 'Tümü';
 type ViewScope = 'Grup İçin' | 'Benim İçin';
 
@@ -34,7 +31,12 @@ const DEFAULT_ICONS: Record<string, string> = {
 
 const CATEGORY_COLORS: string[] = ['#6366f1', '#f59e0b', '#ef4444', '#0ea5e9', '#8b5cf6', '#ec4899', '#10b981', '#f43f5e'];
 
-export const GroupInsights: React.FC<GroupInsightsProps> = ({ groupId, currentUserId }) => {
+export const GroupInsights: React.FC = () => {
+  const { user } = useAuthStore();
+  const { activeGroup } = useGroupStore();
+  const groupId = activeGroup?.id;
+  const currentUserId = user?.id;
+
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<FilterType>('Ay');
@@ -44,6 +46,7 @@ export const GroupInsights: React.FC<GroupInsightsProps> = ({ groupId, currentUs
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   const fetchAll = async () => {
+    if (!groupId) return;
     try {
       const [expRes, groupRes] = await Promise.all([
         apiFetch(`/expenses/${groupId}`),
@@ -118,38 +121,6 @@ export const GroupInsights: React.FC<GroupInsightsProps> = ({ groupId, currentUs
     ? currentDate.toLocaleString('tr-TR', { month: 'long', year: 'numeric' })
     : currentDate.getFullYear().toString();
 
-  const handleNav = (dir: number) => {
-    if (filterType === 'Tümü') return;
-    
-    // Verinin olduğu en yakın tarihi bul
-    let d = new Date(currentDate);
-    let found = false;
-    
-    // Maksimum 24 ay/yıl ileri/geri ara (sonsuz döngü koruması)
-    for (let i = 0; i < 24; i++) {
-      if (filterType === 'Ay') d.setMonth(d.getMonth() + dir);
-      else d.setFullYear(d.getFullYear() + dir);
-      
-      const hasData = expenses.some(e => {
-        const ed = new Date(e.date);
-        if (filterType === 'Ay') return ed.getMonth() === d.getMonth() && ed.getFullYear() === d.getFullYear();
-        return ed.getFullYear() === d.getFullYear();
-      });
-      
-      if (hasData) {
-        found = true;
-        break;
-      }
-      
-      // Veri sınırlarını aştıysak dur
-      if (dir < 0 && d < dataBoundaries.min) break;
-      if (dir > 0 && d > dataBoundaries.max) break;
-    }
-    
-    if (found) setCurrentDate(new Date(d));
-  };
-
-  // Veri sınırlarını hesapla
   const dataBoundaries = useMemo(() => {
     if (expenses.length === 0) return { min: new Date(), max: new Date() };
     const dates = expenses.map(e => new Date(e.date).getTime());
@@ -158,6 +129,28 @@ export const GroupInsights: React.FC<GroupInsightsProps> = ({ groupId, currentUs
       max: new Date(Math.max(...dates))
     };
   }, [expenses]);
+
+  const handleNav = (dir: number) => {
+    if (filterType === 'Tümü') return;
+    let d = new Date(currentDate);
+    let found = false;
+    for (let i = 0; i < 24; i++) {
+      if (filterType === 'Ay') d.setMonth(d.getMonth() + dir);
+      else d.setFullYear(d.getFullYear() + dir);
+      const hasData = expenses.some(e => {
+        const ed = new Date(e.date);
+        if (filterType === 'Ay') return ed.getMonth() === d.getMonth() && ed.getFullYear() === d.getFullYear();
+        return ed.getFullYear() === d.getFullYear();
+      });
+      if (hasData) {
+        found = true;
+        break;
+      }
+      if (dir < 0 && d < dataBoundaries.min) break;
+      if (dir > 0 && d > dataBoundaries.max) break;
+    }
+    if (found) setCurrentDate(new Date(d));
+  };
 
   const canNavPrev = useMemo(() => {
     if (filterType === 'Tümü' || expenses.length === 0) return false;
@@ -182,6 +175,8 @@ export const GroupInsights: React.FC<GroupInsightsProps> = ({ groupId, currentUs
       return ed.getFullYear() > currentDate.getFullYear();
     });
   }, [currentDate, filterType, expenses]);
+
+  if (!groupId) return null;
 
   if (loading) {
     return (
@@ -242,7 +237,7 @@ export const GroupInsights: React.FC<GroupInsightsProps> = ({ groupId, currentUs
                       let startAngle = 0;
                       for(let j=0; j<i; j++) startAngle += (stats.categories[j].total / stats.total) * 2 * Math.PI;
                       const endAngle = startAngle + percentage * 2 * Math.PI;
-                      const midAngle = startAngle + (percentage * Math.PI); // Dilimin tam ortası
+                      const midAngle = startAngle + (percentage * Math.PI);
                       
                       const x1 = Math.cos(startAngle) * 16;
                       const y1 = Math.sin(startAngle) * 16;
@@ -251,8 +246,6 @@ export const GroupInsights: React.FC<GroupInsightsProps> = ({ groupId, currentUs
                       
                       const largeArcFlag = percentage > 0.5 ? 1 : 0;
                       const d = `M 0 0 L ${x1} ${y1} A 16 16 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
-
-                      // Exploding effect calculations
                       const explodeX = activeIndex === i ? Math.cos(midAngle) * 1.5 : 0;
                       const explodeY = activeIndex === i ? Math.sin(midAngle) * 1.5 : 0;
 
@@ -270,7 +263,7 @@ export const GroupInsights: React.FC<GroupInsightsProps> = ({ groupId, currentUs
                             filter: activeIndex === i ? 'brightness(1.2) drop-shadow(0 0 12px '+c.color+'66)' : 'brightness(1)'
                           }}
                           transition={{ 
-                            duration: 0.2, // Daha hızlı animasyon
+                            duration: 0.2,
                             type: 'spring',
                             stiffness: 400,
                             damping: 25
@@ -286,7 +279,6 @@ export const GroupInsights: React.FC<GroupInsightsProps> = ({ groupId, currentUs
                   <div className="w-full h-full rounded-full border-4 border-white/5 flex items-center justify-center text-[10px] text-slate-500 font-bold uppercase">Veri Yok</div>
                 )}
                 
-                {/* Seçili Kategori Bilgisi (Grafik Altında/Üstünde Değil, Ayrı Bir Alan Olarak Tasarlandı) */}
                 {activeIndex !== null && (
                    <motion.div 
                      initial={{ opacity: 0, y: 10 }}

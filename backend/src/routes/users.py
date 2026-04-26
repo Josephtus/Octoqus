@@ -449,7 +449,7 @@ async def delete_avatar(request: Request) -> HTTPResponse:
             if file_path.exists() and file_path.is_file():
                 file_path.unlink()
                 logger.info("avatar.hard_deleted", user_id=user_id, path=str(file_path))
-        except Exception as exc:
+        except (OSError, FileNotFoundError) as exc:
             logger.error("avatar.hard_delete_failed", user_id=user_id, error=str(exc))
             # Dosya silinemese bile DB'yi temizle (veya kullanıcıya hata dön)
             # Burada kritik bir hata olmadığı sürece devam edelim.

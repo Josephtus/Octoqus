@@ -1,13 +1,10 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { Wallet, Users, BarChart3, ArrowRight, CheckCircle2, TrendingUp, PieChart, Bell } from 'lucide-react';
 
-interface LandingPageProps {
-  onLogin: () => void;
-  onRegister: () => void;
-}
-
-export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onRegister }) => {
+export const LandingPage: React.FC = () => {
+  const navigate = useNavigate();
   const { scrollYProgress } = useScroll();
   const heroOpacity = useTransform(scrollYProgress, [0, 0.3], [1, 0]);
   const heroScale = useTransform(scrollYProgress, [0, 0.3], [1, 0.9]);
@@ -30,7 +27,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onRegister })
       y: 0,
       opacity: 1,
       filter: "blur(0px)",
-      transition: { duration: 1, ease: [0.16, 1, 0.3, 1] },
+      transition: { duration: 1, ease: [0.16, 1, 0.3, 1] as any },
     },
   };
 
@@ -40,7 +37,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onRegister })
       <motion.header 
         initial={{ y: -100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
+        transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] as any }}
         className="fixed top-0 left-0 right-0 z-50 px-6 py-6"
       >
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -56,13 +53,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onRegister })
 
           <div className="flex items-center gap-4">
             <button 
-              onClick={onLogin}
+              onClick={() => navigate('/login')}
               className="px-6 py-2.5 text-sm font-bold text-white/80 hover:text-white transition-colors"
             >
               Giriş Yap
             </button>
             <button 
-              onClick={onRegister}
+              onClick={() => navigate('/register')}
               className="px-6 py-2.5 text-sm font-bold bg-white text-black rounded-xl hover:bg-[#00f0ff] hover:text-black transition-all"
             >
               Kayıt Ol
@@ -134,7 +131,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onRegister })
 
           <motion.div variants={itemVariants} className="flex flex-col sm:flex-row items-center justify-center gap-8">
             <button
-              onClick={onRegister}
+              onClick={() => navigate('/register')}
               className="group relative px-10 py-5 bg-white text-black font-black rounded-2xl overflow-hidden transition-all hover:scale-105 active:scale-95 hover:shadow-[0_0_40px_rgba(255,255,255,0.2)]"
             >
               <div className="absolute inset-0 bg-gradient-to-r from-[#b026ff] to-[#00f0ff] opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -274,7 +271,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, onRegister })
               </h2>
               
               <button 
-                onClick={onRegister}
+                onClick={() => navigate('/register')}
                 className="px-12 py-6 bg-[#b026ff] hover:bg-[#9d1fee] text-white font-black rounded-2xl transition-all hover:shadow-[0_0_50px_rgba(176,38,255,0.6)] hover:scale-105 active:scale-95"
               >
                 ÜCRETSİZ BAŞLA

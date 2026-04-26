@@ -1,6 +1,6 @@
 import React from 'react';
 import { getImageUrl } from '../utils/api';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 interface Expense {
   id: number;
@@ -118,13 +118,13 @@ export const ExpenseDetailModal: React.FC<ExpenseDetailModalProps> = ({ expense,
             {expense.bill_photo ? (
               <div className="relative group aspect-[3/4] rounded-3xl overflow-hidden bg-slate-950 border border-slate-800">
                 <img 
-                  src={getImageUrl(expense.bill_photo)} 
+                  src={getImageUrl(expense.bill_photo) || undefined} 
                   alt="Fatura" 
                   className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                 />
                 <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
                   <a 
-                    href={getImageUrl(expense.bill_photo)} 
+                    href={getImageUrl(expense.bill_photo) || undefined} 
                     target="_blank" 
                     rel="noopener noreferrer"
                     className="px-6 py-3 bg-white text-slate-950 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-[#00f0ff] transition-all transform translate-y-4 group-hover:translate-y-0 duration-500"

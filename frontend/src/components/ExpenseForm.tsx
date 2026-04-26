@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../utils/api';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useGroupStore } from '../store/groupStore';
+import { expenseSchema, type ExpenseFormData } from '../utils/validations';
 
 interface ExpenseFormProps {
-  groupId: number;
   onSuccess: () => void;
   onCancel: () => void;
 }
@@ -32,25 +35,37 @@ const DEFAULT_CATEGORIES: Category[] = [
   { name: 'Diğer', icon: '🖐️' },
 ];
 
-export const ExpenseForm: React.FC<ExpenseFormProps> = ({ groupId, onSuccess, onCancel }) => {
-  const [amount, setAmount] = useState<string>('');
-  const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [content, setContent] = useState<string>('');
+export const ExpenseForm: React.FC<ExpenseFormProps> = ({ onSuccess, onCancel }) => {
+  const { activeGroup } = useGroupStore();
+  const groupId = activeGroup?.id;
+
   const [billPhoto, setBillPhoto] = useState<File | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<string | null>(null);
 
-  // Category State
-  const [selectedCategory, setSelectedCategory] = useState<Category>(DEFAULT_CATEGORIES[2]); // Market as default
+  const [selectedCategory, setSelectedCategory] = useState<Category>(DEFAULT_CATEGORIES[2]);
   const [customCategories, setCustomCategories] = useState<Category[]>([]);
   const [isCategoryListOpen, setIsCategoryListOpen] = useState(false);
   
-  // Custom Category Add State
   const [isAddingCustom, setIsAddingCustom] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [newCatIcon, setNewCatIcon] = useState('📦');
 
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    formState: { errors },
+  } = useForm<ExpenseFormData>({
+    resolver: zodResolver(expenseSchema),
+    defaultValues: {
+      date: new Date().toISOString().split('T')[0],
+      category: DEFAULT_CATEGORIES[2].name,
+    }
+  });
+
   useEffect(() => {
+    if (!groupId) return;
     const fetchGroupData = async () => {
       try {
         const res = await apiFetch(`/groups/${groupId}`);
@@ -68,7 +83,7 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ groupId, onSuccess, on
   const allCategories = [...DEFAULT_CATEGORIES, ...customCategories];
 
   const handleAddCustomCategory = async () => {
-    if (!newCatName.trim()) return;
+    if (!groupId || !newCatName.trim()) return;
     const updated = [...customCategories, { name: newCatName.trim(), icon: newCatIcon }];
     
     try {
@@ -79,6 +94,7 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ groupId, onSuccess, on
       });
       setCustomCategories(updated);
       setSelectedCategory({ name: newCatName.trim(), icon: newCatIcon });
+      setValue('category', newCatName.trim());
       setIsAddingCustom(false);
       setNewCatName('');
     } catch (err) {
@@ -88,38 +104,45 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ groupId, onSuccess, on
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
+  const onSubmit = async (data: ExpenseFormData) => {
+    if (!groupId) return;
+    setServerError(null);
     setLoading(true);
 
     try {
       const formData = new FormData();
-      formData.append('amount', amount);
-      formData.append('date', date);
-      formData.append('category', selectedCategory.name);
+      formData.append('amount', data.amount.toString());
+      formData.append('date', data.date);
+      formData.append('category', data.category || 'Diğer');
       
-      if (content.trim() !== '') {
-        formData.append('content', content);
+      if (data.content && data.content.trim() !== '') {
+        formData.append('content', data.content);
       }
       
       if (billPhoto) {
         formData.append('bill_photo', billPhoto);
       }
 
-      await apiFetch(`/expenses/${groupId}`, {
+      const response = await apiFetch(`/expenses/${groupId}`, {
         method: 'POST',
         body: formData,
       });
 
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.message || 'Harcama eklenirken bir hata oluştu.');
+      }
+
       onSuccess();
     } catch (err: any) {
       console.error('Harcama ekleme hatası:', err);
-      setError(err.message || 'Harcama eklenirken bir hata oluştu.');
+      setServerError(err.message || 'Harcama eklenirken bir hata oluştu.');
     } finally {
       setLoading(false);
     }
   };
+
+  if (!groupId) return null;
 
   if (isAddingCustom) {
     return (
@@ -172,14 +195,13 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ groupId, onSuccess, on
         <div className="h-1 w-12 bg-[#00f0ff] mx-auto rounded-full" />
       </div>
       
-      {error && (
+      {serverError && (
         <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-bold text-center animate-shake">
-          {error}
+          {serverError}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Category Selector */}
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <div className="relative">
           <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1">Kategori</label>
           <button
@@ -207,7 +229,11 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ groupId, onSuccess, on
                     <button
                       key={idx}
                       type="button"
-                      onClick={() => { setSelectedCategory(cat); setIsCategoryListOpen(false); }}
+                      onClick={() => { 
+                        setSelectedCategory(cat); 
+                        setValue('category', cat.name);
+                        setIsCategoryListOpen(false); 
+                      }}
                       className="w-full flex items-center gap-4 p-3 hover:bg-white/5 rounded-xl transition-all"
                     >
                       <span className="text-xl">{cat.icon}</span>
@@ -229,43 +255,46 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ groupId, onSuccess, on
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <div>
+          <div className="space-y-1">
             <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1">Miktar (₺)</label>
             <input
               type="number"
               step="0.01"
-              required
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 text-white font-black text-lg focus:border-[#00f0ff] outline-none transition-all"
+              {...register('amount', { valueAsNumber: true })}
+              className={`w-full bg-slate-950 border transition-all rounded-2xl p-4 text-white font-black text-lg focus:outline-none ${
+                errors.amount ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#00f0ff]'
+              }`}
               placeholder="0.00"
             />
+            {errors.amount && <p className="text-[10px] text-red-400 ml-1 font-bold">{errors.amount.message}</p>}
           </div>
 
-          <div>
+          <div className="space-y-1">
             <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1">Tarih</label>
             <input
               type="date"
-              required
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 text-white font-bold focus:border-[#00f0ff] outline-none transition-all"
+              {...register('date')}
+              className={`w-full bg-slate-950 border transition-all rounded-2xl p-4 text-white font-bold focus:outline-none ${
+                errors.date ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#00f0ff]'
+              }`}
             />
+            {errors.date && <p className="text-[10px] text-red-400 ml-1 font-bold">{errors.date.message}</p>}
           </div>
         </div>
 
-        <div>
+        <div className="space-y-1">
           <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1">Açıklama</label>
           <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 text-white font-bold focus:border-[#00f0ff] outline-none transition-all resize-none"
+            {...register('content')}
+            className={`w-full bg-slate-950 border transition-all rounded-2xl p-4 text-white font-bold focus:outline-none resize-none ${
+              errors.content ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#00f0ff]'
+            }`}
             placeholder="Neye harcandı?"
             rows={2}
           />
+          {errors.content && <p className="text-[10px] text-red-400 ml-1 font-bold">{errors.content.message}</p>}
         </div>
 
-        {/* Bill Photo Upload */}
         <div className="relative">
           <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1">Fatura / Makbuz</label>
           <div className="flex items-center gap-4">
@@ -277,7 +306,7 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ groupId, onSuccess, on
                  className="hidden" 
                />
                <svg className="w-5 h-5 text-slate-500 group-hover:text-[#00f0ff] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-               <span className="text-xs font-black text-slate-500 group-hover:text-white transition-colors uppercase tracking-widest">
+               <span className="text-xs font-black text-slate-500 group-hover:text-white transition-colors uppercase tracking-widest text-center">
                  {billPhoto ? billPhoto.name : 'Dosya Seç'}
                </span>
              </label>
@@ -314,3 +343,4 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ groupId, onSuccess, on
     </div>
   );
 };
+

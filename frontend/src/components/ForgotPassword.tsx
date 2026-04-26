@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
 
-interface ForgotPasswordProps {
-  onBackToLogin: () => void;
-}
-
-export const ForgotPassword: React.FC<ForgotPasswordProps> = ({ onBackToLogin }) => {
+export const ForgotPassword: React.FC = () => {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string, type: 'success' | 'error' } | null>(null);
@@ -65,7 +63,7 @@ export const ForgotPassword: React.FC<ForgotPasswordProps> = ({ onBackToLogin })
         </form>
         
         <button 
-          onClick={onBackToLogin}
+          onClick={() => navigate('/login')}
           className="mt-6 w-full text-center text-sm text-slate-400 hover:text-slate-200 transition-colors"
         >
           ← Giriş Ekranına Dön

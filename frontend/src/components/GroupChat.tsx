@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { apiFetch } from '../utils/api';
+import { useAuthStore } from '../store/authStore';
+import { useGroupStore } from '../store/groupStore';
 
 interface Message {
   id: number;
@@ -11,104 +13,109 @@ interface Message {
   timestamp: string;
 }
 
-interface GroupChatProps {
-  groupId: number;
-  currentUserId?: number;
-}
+export const GroupChat: React.FC = () => {
+  const { user } = useAuthStore();
+  const { activeGroup } = useGroupStore();
+  const groupId = activeGroup?.id;
+  const currentUserId = user?.id;
 
-export const GroupChat: React.FC<GroupChatProps> = ({ groupId, currentUserId }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
   const [wsError, setWsError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  useEffect(() => {
-    let isMounted = true;
-    let ws: WebSocket | null = null;
+  const connect = () => {
+    if (!groupId) return;
+    
+    const token = localStorage.getItem('token');
+    if (!token) return;
 
-    const fetchHistoryAndConnect = async () => {
-      try {
-        setLoading(true);
-        // Geçmişi çek
-        const response = await apiFetch(`/messages/${groupId}/history?limit=100`);
-        const data = await response.json();
-        
-        if (!isMounted) return;
+    // Use current location host but change protocol and port if needed
+    // However, since BASE_URL is localhost:8000, we stick to it for now
+    // but in a more robust way
+    const wsUrl = `ws://localhost:8000/api/messages/ws/${groupId}?token=${token}`;
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
 
-        // Backend en yeniden eskiye gönderiyor (DESC), ekranda yukarıdan aşağıya eski->yeni göstermeliyiz
-        setMessages(data.messages.reverse());
-        
-        // WebSocket bağlantısı kur
-        const token = localStorage.getItem('token');
-        if (!token) throw new Error("Token bulunamadı");
-        
-        const wsUrl = `ws://localhost:8000/api/messages/ws/${groupId}?token=${token}`;
-        ws = new WebSocket(wsUrl);
-        wsRef.current = ws;
-
-        ws.onopen = () => {
-          if (!isMounted) {
-            ws?.close();
-            return;
-          }
-          console.log("WebSocket bağlantısı başarılı");
-          setWsError(null);
-        };
-
-        ws.onmessage = (event) => {
-          if (!isMounted) return;
-          const data = JSON.parse(event.data);
-          
-          if (data.type === "message") {
-            setMessages((prev) => {
-              // ID bazlı tekilleştirme (Duplicate önleme)
-              if (prev.some(m => m.id === data.id)) return prev;
-              return [...prev, data];
-            });
-          } else if (data.type === "error") {
-            setWsError(data.message);
-          }
-        };
-
-        ws.onclose = () => {
-          console.log("WebSocket bağlantısı kapandı");
-        };
-
-      } catch (err: any) {
-        if (!isMounted) return;
-        console.error("Chat yükleme hatası:", err);
-        setWsError("Sohbet geçmişi yüklenemedi veya bağlantı kurulamadı.");
-      } finally {
-        if (isMounted) setLoading(false);
+    ws.onopen = () => {
+      console.log("WebSocket connected");
+      setWsError(null);
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
     };
 
-    fetchHistoryAndConnect();
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "message") {
+          setMessages((prev) => {
+            // Check if message already exists (to handle optimistic updates or duplicate broadcast)
+            if (prev.some(m => m.id === data.id)) return prev;
+            return [...prev, data];
+          });
+        } else if (data.type === "error") {
+          setWsError(data.message);
+        }
+      } catch (err) {
+        console.error("WS message parse error:", err);
+      }
+    };
 
-    // Cleanup: Bileşen unmount olduğunda veya groupId değiştiğinde
+    ws.onclose = (e) => {
+      console.log("WebSocket closed", e.code, e.reason);
+      wsRef.current = null;
+      // Attempt reconnect after 3 seconds if not unmounted
+      if (groupId) {
+        reconnectTimeoutRef.current = window.setTimeout(() => {
+          connect();
+        }, 3000);
+      }
+    };
+
+    ws.onerror = (e) => {
+      console.error("WebSocket error:", e);
+      setWsError("Bağlantı hatası oluştu.");
+    };
+  };
+
+  const fetchHistory = async () => {
+    if (!groupId) return;
+    try {
+      setLoading(true);
+      const response = await apiFetch(`/messages/${groupId}/history?limit=100`);
+      const data = await response.json();
+      setMessages(data.messages.reverse());
+    } catch (err: any) {
+      setWsError("Sohbet geçmişi yüklenemedi.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (groupId) {
+      fetchHistory();
+      connect();
+    }
+
     return () => {
-      isMounted = false;
-      if (ws) {
-        ws.close();
-      }
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
+      if (wsRef.current) wsRef.current.close();
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
     };
   }, [groupId]);
 
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-
-    // JSON formatında gönder
     wsRef.current.send(JSON.stringify({ text: inputText }));
     setInputText('');
   };
@@ -132,6 +139,8 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, currentUserId }) 
     }
   };
 
+  if (!groupId) return null;
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64 bg-slate-900 rounded-2xl border border-slate-800 animate-pulse">
@@ -142,7 +151,6 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, currentUserId }) 
 
   return (
     <div className="flex flex-col h-[600px] bg-slate-900 border border-slate-800 rounded-2xl shadow-xl overflow-hidden relative">
-      {/* Header */}
       <div className="bg-slate-800 p-4 border-b border-slate-700 flex justify-between items-center shadow-md z-10">
         <h3 className="text-lg font-bold text-slate-100 flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full bg-[#00f0ff] animate-pulse shadow-[0_0_8px_#00f0ff]"></span>
@@ -151,7 +159,6 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, currentUserId }) 
         {wsError && <span className="text-xs text-red-400 font-medium">{wsError}</span>}
       </div>
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 hide-scrollbar bg-slate-950/50">
         {messages.map((msg) => {
           const isMe = currentUserId != null && msg.sender_id === currentUserId;
@@ -185,7 +192,6 @@ export const GroupChat: React.FC<GroupChatProps> = ({ groupId, currentUserId }) 
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
       <form onSubmit={sendMessage} className="p-4 bg-slate-800 border-t border-slate-700 flex gap-2">
         <input 
           type="text" 

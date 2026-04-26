@@ -1,38 +1,37 @@
 import React, { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 import { apiFetch } from '../utils/api';
 import { LayoutGrid, CreditCard, ArrowUpRight, ArrowDownLeft, Users, ChevronRight } from 'lucide-react';
+import { useAuthStore } from '../store/authStore';
 
 interface HomeProps {
-  user: any;
   onSelectGroup: (id: number, name: string, role: string, isApproved: boolean) => void;
 }
 
-export const Home: React.FC<HomeProps> = ({ user, onSelectGroup }) => {
+export const Home: React.FC<HomeProps> = ({ onSelectGroup }) => {
+  const { user } = useAuthStore();
   const [myGroups, setMyGroups] = useState<any[]>([]);
   const [debts, setDebts] = useState<any>({});
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
+    if (!user) return;
     setLoading(true);
     try {
-      // 1. Üye olunan grupları getir
       const groupsRes = await apiFetch('/groups?joined=true&limit=5');
       const groupsData = await groupsRes.json();
       const joinedGroups = groupsData.groups || [];
       setMyGroups(joinedGroups);
 
-      // 2. Her grup için borç durumunu çek (Özet için)
       const debtData: any = {};
       for (const group of joinedGroups) {
         try {
           const res = await apiFetch(`/expenses/${group.id}/debts`);
           if (res.status === 403) {
-            // Kullanıcı henüz onaylanmamış olabilir, bu grubu borç özetinden atla
             debtData[group.id] = 0;
             continue;
           }
           const d = await res.json();
-          // Kullanıcının bu gruptaki net durumunu hesapla
           let netBalance = 0;
           if (d.transactions) {
             d.transactions.forEach((tx: any) => {
@@ -57,9 +56,9 @@ export const Home: React.FC<HomeProps> = ({ user, onSelectGroup }) => {
 
   useEffect(() => {
     fetchData();
-  }, [user.id]);
+  }, [user?.id]);
 
-  if (loading) {
+  if (loading || !user) {
     return (
       <div className="flex flex-col items-center justify-center py-20 space-y-4">
         <div className="w-12 h-12 border-4 border-[#00f0ff]/20 border-t-[#00f0ff] rounded-full animate-spin" />
@@ -72,7 +71,6 @@ export const Home: React.FC<HomeProps> = ({ user, onSelectGroup }) => {
 
   return (
     <div className="space-y-10 animate-fade-in">
-      {/* Üst Karşılama ve Özet Paneli */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-slate-900/40 backdrop-blur-3xl border border-white/10 rounded-[32px] p-8 md:p-10 relative overflow-hidden shadow-2xl">
           <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
@@ -107,7 +105,6 @@ export const Home: React.FC<HomeProps> = ({ user, onSelectGroup }) => {
           </div>
         </div>
 
-        {/* Küçük Durum Kartı */}
         <div className="bg-gradient-to-br from-[#00f0ff] to-[#b026ff] rounded-[32px] p-8 text-slate-950 shadow-2xl relative overflow-hidden group">
           <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 bg-white/20 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
           <div className="relative z-10 h-full flex flex-col justify-between">
@@ -123,7 +120,6 @@ export const Home: React.FC<HomeProps> = ({ user, onSelectGroup }) => {
         </div>
       </div>
 
-      {/* Gruplarım Listesi */}
       <div className="space-y-6">
         <div className="flex justify-between items-end px-2">
           <div>
@@ -148,8 +144,8 @@ export const Home: React.FC<HomeProps> = ({ user, onSelectGroup }) => {
                     <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-xl shadow-inner">
                       🏢
                     </div>
-                    <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${group.role === 'GROUP_LEADER' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 'bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/20'}`}>
-                      {group.role === 'GROUP_LEADER' ? 'Lider' : 'Üye'}
+                    <div className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${group.role?.toUpperCase() === 'GROUP_LEADER' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 'bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/20'}`}>
+                      {group.role?.toUpperCase() === 'GROUP_LEADER' ? 'Lider' : 'Üye'}
                     </div>
                   </div>
 
@@ -185,6 +181,3 @@ export const Home: React.FC<HomeProps> = ({ user, onSelectGroup }) => {
     </div>
   );
 };
-
-// motion importu eksik kalmasın
-import { motion } from 'framer-motion';

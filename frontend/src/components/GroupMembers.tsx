@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../utils/api';
+import { useGroupStore } from '../store/groupStore';
 
 interface Member {
   user_id: number;
@@ -11,20 +12,18 @@ interface Member {
   joined_at: string | null;
 }
 
-interface GroupMembersProps {
-  groupId: number;
-}
-
-export const GroupMembers: React.FC<GroupMembersProps> = ({ groupId }) => {
+export const GroupMembers: React.FC = () => {
+  const { activeGroup } = useGroupStore();
+  const groupId = activeGroup?.id;
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchMembers = async () => {
+    if (!groupId) return;
     try {
       setLoading(true);
       const res = await apiFetch(`/groups/${groupId}/members`);
       const data = await res.json();
-      // Sadece onaylı üyeleri göster (üyeler için)
       setMembers(data.members?.filter((m: Member) => m.is_approved) || []);
     } catch (err) {
       console.error("Üyeler yüklenemedi", err);
@@ -36,6 +35,8 @@ export const GroupMembers: React.FC<GroupMembersProps> = ({ groupId }) => {
   useEffect(() => {
     fetchMembers();
   }, [groupId]);
+
+  if (!groupId) return null;
 
   if (loading) return <div className="text-[#00f0ff] animate-pulse p-10 text-center">Üyeler yükleniyor...</div>;
 

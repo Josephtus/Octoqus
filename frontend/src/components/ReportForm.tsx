@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
 import { apiFetch } from '../utils/api';
 import { Flag, AlertTriangle, Send, ShieldAlert, MessageSquare } from 'lucide-react';
 

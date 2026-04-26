@@ -1,23 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch } from '../utils/api';
-import { Search, Users, ArrowRight, LayoutGrid, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Users, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useGroupStore } from '../store/groupStore';
 
 interface GroupListProps {
   onSelectGroup: (id: number, name: string, role: string, isApproved: boolean) => void;
-  activeGroupId: number | null;
-  refreshTrigger?: number;
 }
 
-export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, refreshTrigger }) => {
+export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup }) => {
+  const { refreshTrigger } = useGroupStore();
   const [groups, setGroups] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   
-  // Pagination State
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const limit = 6; // Sayfa başına 6 grup (daha az alan kaplaması için)
+  const limit = 6;
 
   const fetchGroups = async () => {
     setLoading(true);
@@ -37,7 +36,6 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, refreshTrig
     fetchGroups();
   }, [search, refreshTrigger, page]);
 
-  // Arama değiştiğinde sayfayı sıfırla
   useEffect(() => {
     setPage(1);
   }, [search]);
@@ -46,7 +44,6 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, refreshTrig
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
-      {/* Mini Search Header */}
       <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 p-6 rounded-[32px] shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-[#00f0ff]/5 blur-2xl rounded-full pointer-events-none" />
         <div className="relative z-10">
@@ -94,13 +91,13 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, refreshTrig
                     </div>
                     <div className="flex flex-col items-end gap-1">
                       <div className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest ${
-                        group.role === 'GROUP_LEADER' 
+                        group.role?.toUpperCase() === 'GROUP_LEADER' 
                           ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' 
-                          : group.role === 'USER'
+                          : group.role?.toUpperCase() === 'USER'
                           ? 'bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/20'
                           : 'bg-white/5 text-slate-500'
                       }`}>
-                        {group.role === 'GROUP_LEADER' ? 'Lider' : group.role === 'USER' ? 'Üye' : 'Misafir'}
+                        {group.role?.toUpperCase() === 'GROUP_LEADER' ? 'Lider' : group.role?.toUpperCase() === 'USER' ? 'Üye' : 'Misafir'}
                       </div>
                     </div>
                   </div>
@@ -129,7 +126,6 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, refreshTrig
         </div>
       )}
 
-      {/* Pagination Controls */}
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-4 pt-4">
           <button 
@@ -143,7 +139,6 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup, refreshTrig
           <div className="flex items-center gap-2">
             {[...Array(totalPages)].map((_, i) => {
               const pNum = i + 1;
-              // Sadece aktif sayfanın etrafındaki sayfaları göster (basit versiyon)
               if (totalPages > 5 && Math.abs(pNum - page) > 2) return null;
               
               return (
