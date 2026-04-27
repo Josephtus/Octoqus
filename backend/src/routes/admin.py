@@ -499,7 +499,9 @@ async def get_group_details(request: Request, group_id: int) -> HTTPResponse:
                 "id": m.id,
                 "sender_name": f"{u.name} {u.surname}",
                 "message_text": m.message_text,
-                "timestamp": m.timestamp.isoformat()
+                "timestamp": m.timestamp.isoformat(),
+                "is_deleted": m.is_deleted,
+                "deleted_at": m.deleted_at.isoformat() if m.deleted_at else None
             })
 
         return sanic_json({
