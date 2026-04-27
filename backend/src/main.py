@@ -79,7 +79,7 @@ app.config.update(
 # ---------------------------------------------------------------------------
 # Rate Limiter Sabitler
 # ---------------------------------------------------------------------------
-RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
+RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "600"))
 RATE_WINDOW_SECONDS: int = 60
 
 
@@ -207,8 +207,8 @@ async def rate_limit_middleware(request: Request) -> None:
     redis_client = request.app.ctx.redis
     rate_key = f"rate_limit:{client_ip}"
 
-    # .env'den gelen limit, yoksa varsayılan 300 (dev dostu)
-    limit = int(os.getenv("RATE_LIMIT_PER_MINUTE", "300"))
+    # .env'den gelen limit, yoksa varsayılan 600 (dev dostu)
+    limit = int(os.getenv("RATE_LIMIT_PER_MINUTE", "600"))
 
     try:
         # Atomik INCR + EXPIRE (ilk istek ise window başlat)

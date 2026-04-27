@@ -13,6 +13,28 @@ interface Message {
   timestamp: string;
 }
 
+const ExpandableText: React.FC<{ text: string }> = ({ text }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const limit = 300;
+  const isLong = text.length > limit;
+
+  return (
+    <div className="relative">
+      <span className="leading-relaxed">
+        {isExpanded ? text : (isLong ? text.slice(0, limit) + '...' : text)}
+      </span>
+      {isLong && (
+        <button 
+          onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
+          className="text-[#00f0ff] hover:text-[#00d0ff] ml-1 font-bold text-[11px] transition-colors"
+        >
+          {isExpanded ? 'Daha az göster' : 'Devamını oku'}
+        </button>
+      )}
+    </div>
+  );
+};
+
 export const GroupChat: React.FC = () => {
   const { user } = useAuthStore();
   const { activeGroup } = useGroupStore();
@@ -197,37 +219,36 @@ export const GroupChat: React.FC = () => {
           const isMe = currentUserId != null && msg.sender_id === currentUserId;
           return (
             <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} group/msg`}>
-              <div className="flex items-center gap-2 mb-1 px-1">
+              <div className={`flex items-center gap-2 mb-1 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                 <span className="text-xs text-slate-500 font-bold tracking-tight">
                   {isMe ? 'Sen' : (msg.sender_name ? `${msg.sender_name} ${msg.sender_surname}` : `Kullanıcı ${msg.sender_id}`)}
                 </span>
-                {!isMe && (
-                  <button 
-                    onClick={() => handleReport(msg.id)}
-                    className="opacity-0 group-hover/msg:opacity-100 p-1.5 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-all shadow-sm border border-red-500/20"
-                    title="Mesajı Şikayet Et"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                  </button>
-                )}
               </div>
-              <div className="flex items-center gap-2">
-                <div className={`px-4 py-2 rounded-2xl text-slate-200 border max-w-[85%] shadow-md ${
+              <div className={`flex items-center gap-2 max-w-full ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                <div className={`px-4 py-2 rounded-2xl text-slate-200 border shadow-md break-all sm:break-words whitespace-pre-wrap max-w-[85%] ${
                   isMe ? 'bg-[#b026ff]/20 border-[#b026ff]/30 rounded-tr-sm' : 'bg-slate-800 border-slate-700 rounded-tl-sm'
                 }`}>
-                  {msg.message_text}
+                  <ExpandableText text={msg.message_text} />
                 </div>
-                {isMe && (
+                {isMe ? (
                   <button 
                     onClick={() => handleDelete(msg.id)}
-                    className="opacity-0 group-hover/msg:opacity-100 p-1 bg-red-500/10 text-red-500 rounded-md hover:bg-red-500 hover:text-white transition-all shadow-sm border border-red-500/20"
+                    className="opacity-0 group-hover/msg:opacity-100 p-1 bg-red-500/10 text-red-500 rounded-md hover:bg-red-500 hover:text-white transition-all shadow-sm border border-red-500/20 shrink-0"
                     title="Mesajı Sil"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                   </button>
+                ) : (
+                  <button 
+                    onClick={() => handleReport(msg.id)}
+                    className="opacity-0 group-hover/msg:opacity-100 p-1 bg-orange-500/10 text-orange-500 rounded-md hover:bg-orange-500 hover:text-white transition-all shadow-sm border border-orange-500/20 shrink-0"
+                    title="Mesajı Şikayet Et"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                  </button>
                 )}
               </div>
-              <span className="text-[10px] text-slate-600 ml-1 mt-1">
+              <span className={`text-[10px] text-slate-600 mt-1 ${isMe ? 'mr-1 text-right' : 'ml-1 text-left'}`}>
                 {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}
               </span>
             </div>
