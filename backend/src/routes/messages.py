@@ -94,6 +94,34 @@ async def _get_approved_group(session, group_id: int) -> Group:
     return group
 
 
+async def _publish_message(request: Request, channel: str, message_data: dict) -> None:
+    """Mesajı Redis üzerinden tüm abonelere yayınlar."""
+    try:
+        await request.app.ctx.redis.publish(channel, json.dumps(message_data))
+    except RedisError as exc:
+        logger.error("pubsub.publish_error", error=str(exc), channel=channel)
+
+
+async def _check_chat_rate_limit(request: Request, user_id: int, group_id: int) -> bool:
+    """
+    Kullanıcının gruptaki mesaj hızını kontrol eder (Anti-Spam).
+    Limit: 10 saniyede 5 mesaj.
+    """
+    key = f"chat_rate:{group_id}:{user_id}"
+    limit = 5
+    window = 10
+
+    try:
+        count = await request.app.ctx.redis.incr(key)
+        if count == 1:
+            await request.app.ctx.redis.expire(key, window)
+
+        return count <= limit
+    except RedisError as exc:
+        logger.warning("chat.rate_limit.redis_error", error=str(exc), user_id=user_id)
+        return True
+
+
 # =============================================================================
 # ENDPOINT 1: GET /api/messages/<group_id>/history — Mesaj Geçmişi
 # =============================================================================
@@ -152,6 +180,109 @@ async def get_message_history(request: Request, group_id: int) -> HTTPResponse:
             },
             status=200,
         )
+
+
+# =============================================================================
+# ENDPOINT 1.5: POST /api/messages/<group_id> — Mesaj Gönder (REST)
+# =============================================================================
+
+@messages_bp.post("/<group_id:int>")
+@protected
+async def send_message_rest(request: Request, group_id: int) -> HTTPResponse:
+    """
+    Gruba yeni bir mesaj gönderir (REST API).
+    WebSocket bağlantısı olmayan veya sorun yaşayan istemciler için alternatiftir.
+    """
+    user_id: int = int(request.ctx.user["sub"])
+    body = request.json or {}
+    message_text = (body.get("text") or "").strip()
+
+    if not message_text:
+        raise BadRequest("Mesaj metni boş olamaz.")
+
+    if len(message_text) > MAX_MESSAGE_SIZE:
+        raise BadRequest(f"Mesaj çok uzun. Max: {MAX_MESSAGE_SIZE // 1024} KB")
+
+    # Anti-Spam Kontrolü
+    if not await _check_chat_rate_limit(request, user_id, group_id):
+        raise Forbidden("Çok hızlı mesaj gönderiyorsunuz. Lütfen biraz bekleyin.")
+
+    async with get_session() as session:
+        await _get_approved_group(session, group_id)
+        await _require_approved_member(session, group_id, user_id)
+
+        # Kullanıcı bilgilerini al (Broadcast için)
+        from src.models import User
+        user_obj = await session.get(User, user_id)
+        user_name = user_obj.name if user_obj else "Bilinmeyen"
+        user_surname = user_obj.surname if user_obj else "Kullanıcı"
+
+        # DB'ye kaydet
+        now = datetime.now(timezone.utc)
+        new_msg = Message(
+            group_id     = group_id,
+            sender_id    = user_id,
+            message_text = message_text,
+            timestamp    = now,
+            is_deleted   = False,
+        )
+        session.add(new_msg)
+        await session.flush()
+        
+        msg_data = {
+            "type":         "message",
+            "id":           new_msg.id,
+            "group_id":     group_id,
+            "sender_id":    user_id,
+            "sender_name":  user_name,
+            "sender_surname": user_surname,
+            "message_text": message_text,
+            "timestamp":    now.isoformat(),
+        }
+
+        # Redis'e publish et (WebSocket üzerinden bağlı olanlar için)
+        channel = CHANNEL_TEMPLATE.format(group_id=group_id)
+        await _publish_message(request, channel, msg_data)
+
+        await session.commit()
+
+        return sanic_json(msg_data, status=201)
+
+
+@messages_bp.delete("/<message_id:int>")
+@protected
+async def delete_own_message(request: Request, message_id: int) -> HTTPResponse:
+    """
+    Kullanıcının kendi gönderdiği mesajı silmesini sağlar (Soft-Delete).
+    Silinen mesaj tüm bağlı istemcilere WebSocket üzerinden bildirilir.
+    """
+    user_id: int = int(request.ctx.user["sub"])
+
+    async with get_session() as session:
+        stmt = select(Message).where(Message.id == message_id, Message.is_deleted.is_(False))
+        message = await session.scalar(stmt)
+
+        if not message:
+            raise NotFound("Mesaj bulunamadı.")
+
+        if message.sender_id != user_id:
+            raise Forbidden("Yalnızca kendi mesajlarınızı silebilirsiniz.")
+
+        # Soft delete
+        message.is_deleted = True
+        message.deleted_at = datetime.now(timezone.utc)
+
+        # Broadcast deletion (Diğer istemcilerin UI'dan kaldırması için)
+        channel = CHANNEL_TEMPLATE.format(group_id=message.group_id)
+        await _publish_message(request, channel, {
+            "type": "delete",
+            "id": message_id,
+            "group_id": message.group_id
+        })
+
+        await session.commit()
+
+        return sanic_json({"message": "Mesaj başarıyla silindi."}, status=200)
 
 
 # =============================================================================
@@ -272,6 +403,14 @@ async def chat_websocket(
                 }))
                 continue
 
+            # Anti-Spam Kontrolü
+            if not await _check_chat_rate_limit(request, user_id, group_id):
+                await ws.send(json.dumps({
+                    "type":    "error",
+                    "message": "Çok hızlı mesaj gönderiyorsunuz. Lütfen biraz bekleyin.",
+                }))
+                continue
+
             # Mesaj içeriğini ayrıştır (JSON veya düz metin)
             message_text: str = ""
             if raw_data.strip().startswith("{"):
@@ -311,8 +450,7 @@ async def chat_websocket(
                 continue
 
             # ── Redis'e publish et ──────────────────────────────────────────
-            # Tüm abone bağlantılar (diğer kullanıcılar) bu mesajı alır
-            publish_payload = json.dumps({
+            publish_payload = {
                 "type":         "message",
                 "id":           msg_id,
                 "group_id":     group_id,
@@ -321,20 +459,15 @@ async def chat_websocket(
                 "sender_surname": user_surname,
                 "message_text": message_text,
                 "timestamp":    now.isoformat(),
-            })
+            }
 
-            try:
-                await request.app.ctx.redis.publish(channel, publish_payload)
-                logger.info(
-                    "ws.msg_published",
-                    msg_id=msg_id,
-                    group_id=group_id,
-                    sender=user_id,
-                )
-            except RedisError as exc:
-                logger.error("ws.publish_error", error=str(exc))
-                # Publish başarısız olsa bile kullanıcıya hata gösterme
-                # (DB'ye kaydedildi, geçmiş endpointten erişilebilir)
+            await _publish_message(request, channel, publish_payload)
+            logger.info(
+                "ws.msg_published",
+                msg_id=msg_id,
+                group_id=group_id,
+                sender=user_id,
+            )
 
     except ConnectionClosedError as exc:
         # WebSocket bağlantısı kapandı

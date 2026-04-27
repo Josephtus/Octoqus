@@ -62,6 +62,8 @@ export const GroupChat: React.FC = () => {
             if (prev.some(m => m.id === data.id)) return prev;
             return [...prev, data];
           });
+        } else if (data.type === "delete") {
+          setMessages((prev) => prev.filter(m => m.id !== data.id));
         } else if (data.type === "error") {
           setWsError(data.message);
         }
@@ -113,11 +115,28 @@ export const GroupChat: React.FC = () => {
     };
   }, [groupId]);
 
-  const sendMessage = (e: React.FormEvent) => {
+  const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    wsRef.current.send(JSON.stringify({ text: inputText }));
-    setInputText('');
+    if (!inputText.trim() || !groupId) return;
+
+    try {
+      const response = await apiFetch(`/messages/${groupId}`, {
+        method: 'POST',
+        body: JSON.stringify({ text: inputText })
+      });
+      
+      const newMessage = await response.json();
+      
+      // Update local state optimistically if not already received via WS
+      setMessages((prev) => {
+        if (prev.some(m => m.id === newMessage.id)) return prev;
+        return [...prev, newMessage];
+      });
+      
+      setInputText('');
+    } catch (err: any) {
+      alert("Mesaj gönderilemedi: " + (err.message || "Bilinmeyen hata"));
+    }
   };
 
   const handleReport = async (messageId: number) => {
@@ -136,6 +155,20 @@ export const GroupChat: React.FC = () => {
       alert(data.message || "Şikayetiniz başarıyla iletildi.");
     } catch (err) {
       alert("Şikayet gönderilemedi.");
+    }
+  };
+
+  const handleDelete = async (messageId: number) => {
+    if (!window.confirm("Bu mesajı silmek istediğinize emin misiniz?")) return;
+
+    try {
+      await apiFetch(`/messages/${messageId}`, {
+        method: 'DELETE'
+      });
+      // Optimistic update
+      setMessages((prev) => prev.filter(m => m.id !== messageId));
+    } catch (err: any) {
+      alert("Mesaj silinemedi: " + (err.message || "Bilinmeyen hata"));
     }
   };
 
@@ -178,10 +211,21 @@ export const GroupChat: React.FC = () => {
                   </button>
                 )}
               </div>
-              <div className={`px-4 py-2 rounded-2xl text-slate-200 border max-w-[80%] shadow-md ${
-                isMe ? 'bg-[#b026ff]/20 border-[#b026ff]/30 rounded-tr-sm' : 'bg-slate-800 border-slate-700 rounded-tl-sm'
-              }`}>
-                {msg.message_text}
+              <div className="flex items-center gap-2">
+                <div className={`px-4 py-2 rounded-2xl text-slate-200 border max-w-[85%] shadow-md ${
+                  isMe ? 'bg-[#b026ff]/20 border-[#b026ff]/30 rounded-tr-sm' : 'bg-slate-800 border-slate-700 rounded-tl-sm'
+                }`}>
+                  {msg.message_text}
+                </div>
+                {isMe && (
+                  <button 
+                    onClick={() => handleDelete(msg.id)}
+                    className="opacity-0 group-hover/msg:opacity-100 p-1 bg-red-500/10 text-red-500 rounded-md hover:bg-red-500 hover:text-white transition-all shadow-sm border border-red-500/20"
+                    title="Mesajı Sil"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  </button>
+                )}
               </div>
               <span className="text-[10px] text-slate-600 ml-1 mt-1">
                 {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}
