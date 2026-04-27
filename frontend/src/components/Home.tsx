@@ -5,7 +5,7 @@ import { LayoutGrid, CreditCard, ArrowUpRight, ArrowDownLeft, Users, ChevronRigh
 import { useAuthStore } from '../store/authStore';
 
 interface HomeProps {
-  onSelectGroup: (id: number, name: string, role: string, isApproved: boolean) => void;
+  onSelectGroup: (id: number, name: string, role: string, isApproved: boolean, nickname?: string | null) => void;
 }
 
 export const Home: React.FC<HomeProps> = ({ onSelectGroup }) => {
@@ -136,7 +136,7 @@ export const Home: React.FC<HomeProps> = ({ onSelectGroup }) => {
                 <motion.div 
                   key={group.id}
                   whileHover={{ y: -5 }}
-                  onClick={() => onSelectGroup(group.id, group.name, group.role, group.is_approved)}
+                  onClick={() => onSelectGroup(group.id, group.name, group.role, group.is_approved, group.nickname)}
                   className="group bg-slate-900/60 border border-white/5 rounded-3xl p-6 hover:border-[#00f0ff]/30 transition-all cursor-pointer shadow-xl relative overflow-hidden"
                 >
                   <div className="flex justify-between items-start mb-6">
@@ -148,7 +148,16 @@ export const Home: React.FC<HomeProps> = ({ onSelectGroup }) => {
                     </div>
                   </div>
 
-                  <h4 className="text-lg font-black text-white group-hover:text-[#00f0ff] transition-colors mb-1 truncate">{group.name}</h4>
+                  <div className="mb-1">
+                    <h4 className="text-lg font-black text-white group-hover:text-[#00f0ff] transition-colors truncate">
+                      {group.name}
+                    </h4>
+                    {group.nickname && (
+                      <span className="inline-block px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[9px] font-black text-slate-500 uppercase tracking-widest mt-1">
+                        🏷️ {group.nickname}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-slate-500 text-xs line-clamp-1 mb-6">{group.content || 'Açıklama belirtilmemiş.'}</p>
 
                   <div className="flex items-center justify-between pt-4 border-t border-white/5">

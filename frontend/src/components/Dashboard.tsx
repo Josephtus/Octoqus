@@ -13,7 +13,8 @@ import {
   Plus, 
   Menu, 
   X,
-  ChevronRight
+  ChevronRight,
+  Edit2
 } from 'lucide-react';
 
 import { ExpenseForm } from './ExpenseForm';
@@ -53,6 +54,8 @@ export const Dashboard: React.FC = () => {
   const activeTab = getActiveTabFromPath(location.pathname);
   const [activeSubTab, setActiveSubTab] = useState<GroupSubTabType>('Harcamalar');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isNicknameModalOpen, setIsNicknameModalOpen] = useState(false);
+  const [newNickname, setNewNickname] = useState('');
 
   const handleLeaveGroup = async () => {
     if (!activeGroup) return;
@@ -235,7 +238,28 @@ export const Dashboard: React.FC = () => {
                             </span>
                           )}
                         </div>
-                        <h2 className="text-4xl font-black text-white tracking-tighter">{activeGroup.name}</h2>
+                        <div className="space-y-1">
+                          <h2 className="text-4xl font-black text-white tracking-tighter">
+                            {activeGroup.name}
+                          </h2>
+                          <div className="flex items-center gap-2">
+                            {activeGroup.nickname && (
+                              <span className="px-3 py-1 rounded-lg bg-[#00f0ff]/10 border border-[#00f0ff]/20 text-[10px] font-black text-[#00f0ff] uppercase tracking-widest flex items-center gap-1.5 shadow-lg">
+                                🏷️ {activeGroup.nickname}
+                              </span>
+                            )}
+                            <button 
+                              onClick={() => {
+                                setNewNickname(activeGroup.nickname || '');
+                                setIsNicknameModalOpen(true);
+                              }}
+                              className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-500 hover:text-[#00f0ff] hover:border-[#00f0ff]/30 transition-all"
+                              title="Takma Adı Düzenle"
+                            >
+                              <Edit2 size={12} />
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
@@ -371,6 +395,67 @@ export const Dashboard: React.FC = () => {
               className="relative w-full max-w-md bg-slate-900 border border-white/10 rounded-[40px] p-8 shadow-2xl overflow-hidden"
             >
               <CreateGroupModal onClose={() => setIsCreateModalOpen(false)} onSuccess={() => { setIsCreateModalOpen(false); triggerRefresh(); }} />
+            </motion.div>
+          </div>
+        )}
+
+        {isNicknameModalOpen && activeGroup && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" 
+              onClick={() => setIsNicknameModalOpen(false)} 
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-sm bg-slate-900 border border-white/10 rounded-[40px] p-8 shadow-2xl"
+            >
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-xl font-black text-white mb-2">Takma Adı Düzenle</h3>
+                  <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Orijinal İsim: {activeGroup.name}</p>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Takma İsim</label>
+                    <input 
+                      type="text"
+                      className="w-full bg-slate-950 border border-white/10 rounded-2xl px-5 py-3.5 text-white focus:outline-none focus:border-[#00f0ff]/50"
+                      placeholder="Örn: Evim, İş Grubu..."
+                      value={newNickname}
+                      onChange={(e) => setNewNickname(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button 
+                    onClick={async () => {
+                      try {
+                        const res = await apiFetch(`/groups/${activeGroup.id}/nickname`, {
+                          method: 'PUT',
+                          body: JSON.stringify({ nickname: newNickname.trim() || null })
+                        });
+                        if (res.ok) {
+                          setActiveGroup({ ...activeGroup, nickname: newNickname.trim() || null });
+                          setIsNicknameModalOpen(false);
+                          triggerRefresh();
+                        }
+                      } catch (err) { alert("Hata oluştu."); }
+                    }}
+                    className="flex-1 bg-[#00f0ff] text-slate-950 py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:scale-105 transition-all"
+                  >
+                    KAYDET
+                  </button>
+                  <button 
+                    onClick={() => setIsNicknameModalOpen(false)}
+                    className="flex-1 bg-white/5 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-white/10 transition-all"
+                  >
+                    İPTAL
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}

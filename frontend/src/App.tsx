@@ -71,13 +71,13 @@ function App() {
         <Route path="/dashboard" element={
           user ? <Dashboard /> : <Navigate to="/login" replace />
         }>
-          <Route index element={<Home onSelectGroup={(id, name, role, isApproved) => {
+          <Route index element={<Home onSelectGroup={(id, name, role, isApproved, nickname) => {
              // We still use store but routing will handle the view
-             useGroupStore.getState().setActiveGroup({ id, name, role, isApproved });
+             useGroupStore.getState().setActiveGroup({ id, name, role, isApproved, nickname });
              navigate('/dashboard/groups');
           }} />} />
-          <Route path="groups" element={<GroupList onSelectGroup={(id, name, role, isApproved) => {
-             useGroupStore.getState().setActiveGroup({ id, name, role, isApproved });
+          <Route path="groups" element={<GroupList onSelectGroup={(id, name, role, isApproved, nickname) => {
+             useGroupStore.getState().setActiveGroup({ id, name, role, isApproved, nickname });
           }} />} />
           <Route path="social" element={<SocialList />} />
           <Route path="profile" element={<ProfileSettings onUpdate={fetchUser} />} />

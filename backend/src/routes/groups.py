@@ -49,6 +49,39 @@ def generate_invite_code(length=12):
     return "#" + "".join(secrets.choice(chars) for _ in range(length))
 
 
+async def _get_auto_nickname(session, user_id: int, group_name: str, exclude_group_id: int | None = None) -> str | None:
+    """
+    Kullanıcının üye olduğu diğer gruplarla isim çakışması varsa 
+    otomatik bir takma ad (örn: GrupAdı(2)) önerir.
+    """
+    stmt = (
+        select(Group.name, GroupMember.nickname)
+        .join(GroupMember, GroupMember.group_id == Group.id)
+        .where(GroupMember.user_id == user_id, GroupMember.is_approved.is_(True))
+    )
+    if exclude_group_id:
+        stmt = stmt.where(Group.id != exclude_group_id)
+        
+    result = await session.execute(stmt)
+    rows = result.all()
+    
+    # Bu isimde başka bir grup var mı?
+    has_same_name = any(row.name == group_name for row in rows)
+    if not has_same_name:
+        return None
+        
+    # Çakışma var, uygun etiketi bul
+    used_labels = []
+    for row in rows:
+        used_labels.append(row.nickname if row.nickname else row.name)
+        
+    count = 2
+    while f"{group_name}({count})" in used_labels:
+        count += 1
+    
+    return f"{group_name}({count})"
+
+
 # =============================================================================
 # Pydantic Şemaları
 # =============================================================================
@@ -101,6 +134,20 @@ class UpdateGroupRequest(BaseModel):
             v = v.strip() or None
         return v
 
+class SetNicknameRequest(BaseModel):
+    """Grup takma adını belirleme isteği."""
+    nickname: str | None = None
+
+    @field_validator("nickname")
+    @classmethod
+    def validate_nickname(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip()
+            if not v: return None
+            if len(v) > 200:
+                raise ValueError("Takma ad en fazla 200 karakter olabilir.")
+        return v
+
 
 # =============================================================================
 # Helpers
@@ -126,6 +173,7 @@ def _build_member_response(member: GroupMember) -> dict:
         "group_id": member.group_id,
         "role": member.role.value,
         "is_approved": member.is_approved,
+        "nickname": member.nickname,
         "joined_at": member.joined_at.isoformat() if member.joined_at else None,
     }
 
@@ -230,11 +278,13 @@ async def create_group(request: Request) -> HTTPResponse:
         await session.flush()  # ID al
 
         # Kurucuyu GROUP_LEADER olarak ve onaylı şekilde ekle
+        auto_nick = await _get_auto_nickname(session, creator_id, new_group.name, exclude_group_id=new_group.id)
         leader_membership = GroupMember(
             user_id=creator_id,
             group_id=new_group.id,
             role=GroupMemberRole.GROUP_LEADER,
-            is_approved=True,  # Kurucu direkt onaylı lider
+            is_approved=True,
+            nickname=auto_nick
         )
         session.add(leader_membership)
 
@@ -309,6 +359,7 @@ async def list_groups(request: Request) -> HTTPResponse:
             g_dict = _build_group_response(group)
             g_dict["role"] = membership.role.value
             g_dict["is_approved"] = membership.is_approved
+            g_dict["nickname"] = membership.nickname
             data_list.append(g_dict)
 
         return sanic_json(
@@ -508,6 +559,12 @@ async def approve_member(
             raise BadRequest("Bu kullanıcı zaten grubun onaylı üyesi.")
 
         target_membership.is_approved = True
+        
+        # Otomatik takma ad kontrolü
+        group = await session.get(Group, group_id)
+        auto_nick = await _get_auto_nickname(session, target_user_id, group.name, exclude_group_id=group_id)
+        if auto_nick:
+            target_membership.nickname = auto_nick
 
         logger.info(
             "group.member_approved",
@@ -1073,4 +1130,43 @@ async def list_banned_users(request: Request, group_id: int) -> HTTPResponse:
                 for b in bans
             ]
         }, status=200)
+
+
+# =============================================================================
+# ENDPOINT 5: PUT /api/groups/<group_id>/nickname — Takma Ad Belirle
+# =============================================================================
+
+@groups_bp.put("/<group_id:int>/nickname")
+@protected
+async def set_group_nickname(request: Request, group_id: int) -> HTTPResponse:
+    """
+    Kullanıcının gruptaki kendi takma adını güncellemesini veya silmesini sağlar.
+    """
+    user_id: int = int(request.ctx.user["sub"])
+    body = request.json or {}
+    
+    try:
+        data = SetNicknameRequest.model_validate(body)
+    except ValidationError as exc:
+        raise BadRequest(f"Validasyon hatası: {exc.errors()}")
+
+    async with get_session() as session:
+        membership = await _get_membership(session, group_id, user_id)
+        if not membership:
+            raise NotFound("Bu gruba üye değilsiniz.")
+
+        membership.nickname = data.nickname
+        await session.commit()
+        
+        logger.info(
+            "group.nickname_updated", 
+            group_id=group_id, 
+            user_id=user_id, 
+            nickname=data.nickname
+        )
+        
+        return sanic_json({
+            "message": "Takma ad güncellendi." if data.nickname else "Takma ad silindi.",
+            "nickname": data.nickname
+        })
 

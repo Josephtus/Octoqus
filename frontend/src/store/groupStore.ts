@@ -5,6 +5,7 @@ interface ActiveGroup {
   name: string;
   role: string | null;
   isApproved: boolean;
+  nickname?: string | null;
 }
 
 interface GroupState {

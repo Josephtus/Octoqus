@@ -284,6 +284,9 @@ class GroupMember(Base):
         default=GroupMemberRole.USER,
         comment="Grup içi rol: user veya group_leader",
     )
+    nickname: Mapped[Optional[str]] = mapped_column(
+        String(200), nullable=True, comment="Kullanıcının bu gruba verdiği özel isim"
+    )
     joined_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=func.now()
     )

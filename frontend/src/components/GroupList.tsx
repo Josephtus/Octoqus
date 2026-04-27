@@ -5,7 +5,7 @@ import { Users, ArrowRight, Plus } from 'lucide-react';
 import { useGroupStore } from '../store/groupStore';
 
 interface GroupListProps {
-  onSelectGroup: (id: number, name: string, role: string, isApproved: boolean) => void;
+  onSelectGroup: (id: number, name: string, role: string, isApproved: boolean, nickname?: string | null) => void;
 }
 
 export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup }) => {
@@ -112,7 +112,7 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup }) => {
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.3, delay: index * 0.05 }}
                 whileHover={{ y: -8, borderColor: 'rgba(0, 240, 255, 0.3)' }}
-                onClick={() => onSelectGroup(group.id, group.name, group.role || 'GUEST', group.is_approved)}
+                onClick={() => onSelectGroup(group.id, group.name, group.role || 'GUEST', group.is_approved, group.nickname)}
                 className="group bg-slate-900/40 backdrop-blur-md border border-white/5 p-8 rounded-[32px] transition-all cursor-pointer shadow-xl flex flex-col justify-between min-h-[220px] relative overflow-hidden"
               >
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 blur-3xl -mr-16 -mt-16 group-hover:bg-[#00f0ff]/10 transition-colors" />
@@ -130,7 +130,16 @@ export const GroupList: React.FC<GroupListProps> = ({ onSelectGroup }) => {
                       {group.role?.toUpperCase() === 'GROUP_LEADER' ? 'Lider' : 'Üye'}
                     </div>
                   </div>
-                  <h3 className="text-xl font-black text-white group-hover:text-[#00f0ff] transition-colors tracking-tight line-clamp-1 mb-2">{group.name}</h3>
+                  <div className="mb-2">
+                    <h3 className="text-xl font-black text-white group-hover:text-[#00f0ff] transition-colors tracking-tight line-clamp-1">
+                      {group.name}
+                    </h3>
+                    {group.nickname && (
+                      <span className="inline-block px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-black text-[#00f0ff]/70 uppercase tracking-widest mt-1">
+                        🏷️ {group.nickname}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-slate-500 text-xs line-clamp-2 leading-relaxed">{group.content || 'Açıklama belirtilmemiş.'}</p>
                 </div>
 
