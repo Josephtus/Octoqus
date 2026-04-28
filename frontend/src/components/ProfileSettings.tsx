@@ -15,7 +15,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'settings' | 'followers' | 'following'>('settings');
+  const [activeTab, setActiveTab] = useState<'settings' | 'friends' | 'requests'>('settings');
   const [socialData, setSocialData] = useState<any[]>([]);
   const [socialLoading, setSocialLoading] = useState(false);
   const [socialPage, setSocialPage] = useState(1);
@@ -65,14 +65,16 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
     }
   };
 
-  const fetchSocialList = async (tab: 'followers' | 'following', pageNum: number = 1) => {
+  const fetchSocialList = async (tab: 'friends' | 'requests', pageNum: number = 1) => {
     if (!user) return;
     setSocialLoading(true);
     try {
-      const res = await apiFetch(`/social/${user.id}/${tab}?page=${pageNum}&limit=${socialLimit}`);
+      const endpoint = tab === 'friends' ? '/social/friends' : '/social/friend-requests';
+      const res = await apiFetch(endpoint);
       const data = await res.json();
       setSocialData(data.data || []);
-      setSocialTotalCount(data.total_count || 0);
+      // Pagination might not be implemented in backend for these yet, but we'll set it anyway
+      setSocialTotalCount(data.total_count || data.data?.length || 0);
     } catch (err) {
       console.error(`${tab} listesi yüklenemedi:`, err);
     } finally {
@@ -183,11 +185,22 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
     }
   };
 
-  const handleUnfollow = async (targetId: number) => {
-    if (!window.confirm("Takipten çıkmak istediğinize emin misiniz?")) return;
+  const handleFriendAction = async (targetId: number, action: 'accept' | 'decline' | 'remove') => {
     try {
-      await apiFetch(`/social/unfollow/${targetId}`, { method: 'DELETE' });
-      setSocialData(prev => prev.filter(u => u.id !== targetId));
+      let endpoint = '';
+      let method = 'POST';
+
+      if (action === 'accept') endpoint = `/social/accept-request/${targetId}`;
+      else if (action === 'decline') endpoint = `/social/decline-request/${targetId}`;
+      else if (action === 'remove') {
+        endpoint = `/social/remove-friend/${targetId}`;
+        method = 'DELETE';
+      }
+
+      const res = await apiFetch(endpoint, { method });
+      if (res.ok) {
+        setSocialData(prev => prev.filter(u => u.id !== targetId));
+      }
     } catch (err) {
       alert("İşlem başarısız.");
     }
@@ -239,6 +252,9 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                 <span className="text-[10px] font-black uppercase tracking-widest">Doğrulanmış</span>
               </div>
             </div>
+            {user?.role !== 'ADMIN' && (
+              <p className="text-white font-black text-lg mb-1">{user?.invite_code}</p>
+            )}
             <p className="text-slate-400 font-medium mb-1">{user?.mail}</p>
             <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-6">Kayıt Tarihi: {new Date(user?.created_at).toLocaleDateString('tr-TR')}</p>
             
@@ -253,20 +269,20 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                 <Settings size={14} /> Ayarlar
               </button>
               <button 
-                onClick={() => setActiveTab('following')}
+                onClick={() => setActiveTab('friends')}
                 className={`flex items-center gap-2 px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                  activeTab === 'following' ? 'bg-[#00f0ff] text-slate-950 shadow-lg shadow-[#00f0ff]/20' : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
+                  activeTab === 'friends' ? 'bg-[#00f0ff] text-slate-950 shadow-lg shadow-[#00f0ff]/20' : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
                 }`}
               >
-                <Users size={14} /> Takip Edilenler
+                <Users size={14} /> Arkadaşlar
               </button>
               <button 
-                onClick={() => setActiveTab('followers')}
+                onClick={() => setActiveTab('requests')}
                 className={`flex items-center gap-2 px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                  activeTab === 'followers' ? 'bg-[#b026ff] text-white shadow-lg shadow-[#b026ff]/20' : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
+                  activeTab === 'requests' ? 'bg-[#b026ff] text-white shadow-lg shadow-[#b026ff]/20' : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
                 }`}
               >
-                <User size={14} /> Takipçiler
+                <User size={14} /> Arkadaşlık İstekleri
               </button>
             </div>
           </div>
@@ -427,7 +443,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                 </div>
                 <div>
                   <h3 className="text-xl font-black text-white tracking-tight">
-                    {activeTab === 'following' ? 'Takip Edilenler' : 'Takipçiler'}
+                    {activeTab === 'friends' ? 'Arkadaşlar' : 'Arkadaşlık İstekleri'}
                   </h3>
                   <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Toplam {socialData.length} kullanıcı</p>
                 </div>
@@ -461,13 +477,28 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {activeTab === 'following' && (
+                      {activeTab === 'friends' ? (
                         <button 
-                          onClick={() => handleUnfollow(item.id)}
+                          onClick={() => handleFriendAction(item.id, 'remove')}
                           className="px-4 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all"
                         >
-                          Takipten Çık
+                          Arkadaştan Çıkar
                         </button>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => handleFriendAction(item.id, 'accept')}
+                            className="px-4 py-2 bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/20 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-[#00f0ff] hover:text-slate-950 transition-all"
+                          >
+                            Onayla
+                          </button>
+                          <button 
+                            onClick={() => handleFriendAction(item.id, 'decline')}
+                            className="px-4 py-2 bg-white/5 text-white border border-white/10 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-white/10 transition-all"
+                          >
+                            Reddet
+                          </button>
+                        </div>
                       )}
                       <button 
                         onClick={() => setSelectedProfile(item)}

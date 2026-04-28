@@ -12,7 +12,7 @@ export const SocialList: React.FC = () => {
   const [users, setUsers] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
-  const [followingIds, setFollowingIds] = useState<number[]>([]);
+  const [friendshipStatuses, setFriendshipStatuses] = useState<Record<number, {status: string | null, sender_id?: number}>>({});
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [selectedUser, setSelectedUser] = useState<any>(null);
@@ -27,18 +27,23 @@ export const SocialList: React.FC = () => {
     }
     setLoading(true);
     try {
-      const [usersRes, meRes] = await Promise.all([
-        apiFetch(`/users/search?q=${encodeURIComponent(search)}&page=${page}&limit=${limit}`),
-        apiFetch('/auth/me')
-      ]);
+      const usersRes = await apiFetch(`/users/search?q=${encodeURIComponent(search)}&page=${page}&limit=${limit}`);
       const usersData = await usersRes.json();
-      const meData = await meRes.json();
       
       setUsers(usersData.data || []);
       setTotalCount(usersData.total_count || 0);
       
-      if (meData.user?.following) {
-        setFollowingIds(meData.user.following.map((f: any) => f.id));
+      // Fetch statuses for found users
+      if (usersData.data && usersData.data.length > 0) {
+        const statusPromises = usersData.data.map((u: any) => 
+          apiFetch(`/social/status/${u.id}`).then(r => r.json().then(d => ({id: u.id, data: d})))
+        );
+        const statuses = await Promise.all(statusPromises);
+        const statusMap: any = {};
+        statuses.forEach(s => {
+          statusMap[s.id] = s.data;
+        });
+        setFriendshipStatuses(prev => ({...prev, ...statusMap}));
       }
     } catch (err) {
       console.error("Sosyal veri çekme hatası:", err);
@@ -55,16 +60,28 @@ export const SocialList: React.FC = () => {
     return () => clearTimeout(delayDebounceFn);
   }, [search, page]);
 
-  const toggleFollow = async (targetId: number, isFollowing: boolean) => {
+  const handleFriendAction = async (targetId: number, action: 'request' | 'accept' | 'decline' | 'remove') => {
     try {
-      const method = isFollowing ? 'DELETE' : 'POST';
-      const endpoint = isFollowing ? `/social/unfollow/${targetId}` : `/social/follow/${targetId}`;
-      await apiFetch(endpoint, { method });
-      setFollowingIds(prev => 
-        isFollowing ? prev.filter(id => id !== targetId) : [...prev, targetId]
-      );
+      let endpoint = '';
+      let method = 'POST';
+
+      if (action === 'request') endpoint = `/social/friend-request/${targetId}`;
+      else if (action === 'accept') endpoint = `/social/accept-request/${targetId}`;
+      else if (action === 'decline') endpoint = `/social/decline-request/${targetId}`;
+      else if (action === 'remove') {
+        endpoint = `/social/remove-friend/${targetId}`;
+        method = 'DELETE';
+      }
+
+      const res = await apiFetch(endpoint, { method });
+      if (res.ok) {
+        // Refresh status for this user
+        const statusRes = await apiFetch(`/social/status/${targetId}`);
+        const statusData = await statusRes.json();
+        setFriendshipStatuses(prev => ({...prev, [targetId]: statusData}));
+      }
     } catch (err) {
-      console.error("Takip hatası:", err);
+      console.error("Arkadaşlık işlemi hatası:", err);
     }
   };
 
@@ -82,7 +99,7 @@ export const SocialList: React.FC = () => {
             <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-[#00f0ff] transition-colors" size={18} />
             <input 
               type="text" 
-              placeholder="İsim veya e-posta ile ara..."
+              placeholder="İsim, e-posta veya #kod ile ara..."
               className="w-full pl-14 pr-6 py-4 rounded-2xl bg-slate-950/50 border border-white/5 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
@@ -102,7 +119,10 @@ export const SocialList: React.FC = () => {
               {search.trim() ? (
                 <>
                   {users.filter(u => u.id !== currentUserId).map((user, index) => {
-                    const isFollowing = followingIds.includes(user.id);
+                    const statusData = friendshipStatuses[user.id] || { status: null };
+                    const status = statusData.status;
+                    const isSender = statusData.sender_id === currentUserId;
+
                     return (
                       <motion.div
                         key={user.id}
@@ -121,7 +141,10 @@ export const SocialList: React.FC = () => {
                             )}
                           </div>
                           <div>
-                            <h4 className="text-sm font-black text-white tracking-tight">{user.name} {user.surname}</h4>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-black text-white tracking-tight">{user.name} {user.surname}</h4>
+                              <span className="text-[9px] text-[#00f0ff] font-bold opacity-60">{user.invite_code}</span>
+                            </div>
                             <div className="flex items-center gap-2">
                               <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{user.mail}</p>
                               {user.age && <span className="text-[9px] text-[#00f0ff] font-black">{user.age} Yaş</span>}
@@ -130,16 +153,45 @@ export const SocialList: React.FC = () => {
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <button 
-                            onClick={() => toggleFollow(user.id, isFollowing)}
-                            className={`px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 ${
-                              isFollowing 
-                                ? 'bg-white/5 text-white border border-white/10 hover:bg-red-500/10 hover:text-red-500' 
-                                : 'bg-[#00f0ff] text-slate-950 shadow-lg shadow-[#00f0ff]/20 hover:scale-105'
-                            }`}
-                          >
-                            {isFollowing ? <><UserMinus size={14} /> Takipten Çık</> : <><UserPlus size={14} /> Takip Et</>}
-                          </button>
+                          {status === 'ACCEPTED' ? (
+                            <button 
+                              onClick={() => handleFriendAction(user.id, 'remove')}
+                              className="px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 bg-white/5 text-white border border-white/10 hover:bg-red-500/10 hover:text-red-500"
+                            >
+                              <UserMinus size={14} /> Arkadaşlıktan Çıkar
+                            </button>
+                          ) : status === 'PENDING' ? (
+                            isSender ? (
+                              <button 
+                                onClick={() => handleFriendAction(user.id, 'remove')}
+                                className="px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 bg-white/5 text-slate-400 border border-white/5 hover:text-red-500"
+                              >
+                                <X size={14} /> İsteği İptal Et
+                              </button>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <button 
+                                  onClick={() => handleFriendAction(user.id, 'accept')}
+                                  className="px-4 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 bg-[#00f0ff] text-slate-950"
+                                >
+                                  Onayla
+                                </button>
+                                <button 
+                                  onClick={() => handleFriendAction(user.id, 'decline')}
+                                  className="px-4 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 bg-white/5 text-white border border-white/10"
+                                >
+                                  Reddet
+                                </button>
+                              </div>
+                            )
+                          ) : (
+                            <button 
+                              onClick={() => handleFriendAction(user.id, 'request')}
+                              className="px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 bg-[#00f0ff] text-slate-950 shadow-lg shadow-[#00f0ff]/20 hover:scale-105"
+                            >
+                              <UserPlus size={14} /> İstek Gönder
+                            </button>
+                          )}
                         </div>
                       </motion.div>
                     );
@@ -197,6 +249,12 @@ export const SocialList: React.FC = () => {
               </button>
 
               <div className="p-10 pt-16 flex flex-col items-center text-center relative z-0">
+                {(() => {
+                  const statusData = friendshipStatuses[selectedUser.id] || { status: null };
+                  const status = statusData.status;
+                  const isSender = statusData.sender_id === currentUserId;
+                  return (
+                    <>
                 <div className="w-32 h-32 rounded-[40px] bg-slate-800 border-4 border-white/10 overflow-hidden shadow-2xl mb-8">
                   {selectedUser.profile_photo ? (
                     <img src={getImageUrl(selectedUser.profile_photo) || ''} alt={selectedUser.name} className="w-full h-full object-cover" />
@@ -223,17 +281,49 @@ export const SocialList: React.FC = () => {
                 </div>
 
                 <div className="w-full">
-                  <button 
-                    onClick={() => toggleFollow(selectedUser.id, followingIds.includes(selectedUser.id))}
-                    className={`w-full py-5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-3 ${
-                      followingIds.includes(selectedUser.id)
-                        ? 'bg-white/5 text-white border border-white/10 hover:bg-red-500/10 hover:text-red-500'
-                        : 'bg-[#00f0ff] text-slate-950 shadow-xl shadow-[#00f0ff]/20 hover:scale-[1.02] active:scale-95'
-                    }`}
-                  >
-                    {followingIds.includes(selectedUser.id) ? <><UserMinus size={18} /> Takipten Çık</> : <><UserPlus size={18} /> Takip Et</>}
-                  </button>
+                  {status === 'ACCEPTED' ? (
+                    <button 
+                      onClick={() => handleFriendAction(selectedUser.id, 'remove')}
+                      className="w-full py-5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-3 bg-white/5 text-white border border-white/10 hover:bg-red-500/10 hover:text-red-500"
+                    >
+                      <UserMinus size={18} /> Arkadaşlıktan Çıkar
+                    </button>
+                  ) : status === 'PENDING' ? (
+                    isSender ? (
+                      <button 
+                        onClick={() => handleFriendAction(selectedUser.id, 'remove')}
+                        className="w-full py-5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-3 bg-white/5 text-slate-400 border border-white/5 hover:text-red-500"
+                      >
+                        <X size={18} /> İsteği İptal Et
+                      </button>
+                    ) : (
+                      <div className="flex flex-col gap-3 w-full">
+                        <button 
+                          onClick={() => handleFriendAction(selectedUser.id, 'accept')}
+                          className="w-full py-5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-3 bg-[#00f0ff] text-slate-950 shadow-xl shadow-[#00f0ff]/20"
+                        >
+                          Onayla
+                        </button>
+                        <button 
+                          onClick={() => handleFriendAction(selectedUser.id, 'decline')}
+                          className="w-full py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-3 bg-white/5 text-white border border-white/10"
+                        >
+                          Reddet
+                        </button>
+                      </div>
+                    )
+                  ) : (
+                    <button 
+                      onClick={() => handleFriendAction(selectedUser.id, 'request')}
+                      className="w-full py-5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-3 bg-[#00f0ff] text-slate-950 shadow-xl shadow-[#00f0ff]/20 hover:scale-[1.02] active:scale-95"
+                    >
+                      <UserPlus size={18} /> İstek Gönder
+                    </button>
+                  )}
                 </div>
+                </>
+                  );
+                })()}
               </div>
             </motion.div>
           </div>
