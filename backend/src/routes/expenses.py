@@ -138,7 +138,7 @@ def _build_expense(exp: Expense) -> dict:
         "id":            exp.id,
         "group_id":      exp.group_id,
         "added_by":      exp.added_by,
-        "added_by_name": exp.added_by_user.name if exp.added_by_user else "Bilinmiyor",
+        "added_by_name": f"{exp.added_by_user.name} {exp.added_by_user.surname}" if exp.added_by_user else "Bilinmiyor",
         "amount":        float(exp.amount),
         "content":       exp.content,
         "bill_photo":    exp.bill_photo,

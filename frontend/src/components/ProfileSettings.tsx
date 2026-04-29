@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
+import { DatePicker } from './common/DatePicker';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { apiFetch, getImageUrl } from '../utils/api';
 import { profileSchema, type ProfileFormData, resetPasswordSchema, type ResetPasswordFormData } from '../utils/validations';
@@ -30,6 +31,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
     register: registerProfile,
     handleSubmit: handleSubmitProfile,
     setValue: setProfileValue,
+    control: profileControl,
     formState: { errors: profileErrors },
   } = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),
@@ -348,15 +350,19 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                     {profileErrors.phone_number && <p className="text-[10px] text-red-400 ml-2 font-bold">{profileErrors.phone_number.message}</p>}
                   </div>
                   <div className="space-y-3">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Doğum Tarihi</label>
-                    <input 
-                      type="date" 
-                      {...registerProfile('birthday')}
-                      className={`w-full bg-slate-950/50 border transition-all rounded-2xl py-4 px-6 text-white focus:outline-none font-bold [color-scheme:dark] ${
-                        profileErrors.birthday ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#00f0ff]/50'
-                      }`}
+                    <Controller
+                      control={profileControl}
+                      name="birthday"
+                      render={({ field: { onChange, value } }) => (
+                        <DatePicker
+                          label="Doğum Tarihi"
+                          value={value}
+                          onChange={onChange}
+                          error={profileErrors.birthday?.message}
+                          showToday={false}
+                        />
+                      )}
                     />
-                    {profileErrors.birthday && <p className="text-[10px] text-red-400 ml-2 font-bold">{profileErrors.birthday.message}</p>}
                   </div>
                 </div>
 

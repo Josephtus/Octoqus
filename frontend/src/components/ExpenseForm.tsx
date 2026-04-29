@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../utils/api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
+import { DatePicker } from './common/DatePicker';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useGroupStore } from '../store/groupStore';
 import { expenseSchema, type ExpenseFormData } from '../utils/validations';
@@ -37,6 +38,7 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ onSuccess, onCancel })
     register,
     handleSubmit,
     setValue,
+    control,
     formState: { errors },
   } = useForm<ExpenseFormData>({
     resolver: zodResolver(expenseSchema),
@@ -353,15 +355,18 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ onSuccess, onCancel })
           </div>
 
           <div className="space-y-1">
-            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1">Tarih</label>
-            <input
-              type="date"
-              {...register('date')}
-              className={`w-full bg-slate-950 border transition-all rounded-2xl p-4 text-white font-bold focus:outline-none ${
-                errors.date ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#00f0ff]'
-              }`}
+            <Controller
+              control={control}
+              name="date"
+              render={({ field: { onChange, value } }) => (
+                <DatePicker
+                  label="Tarih"
+                  value={value}
+                  onChange={onChange}
+                  error={errors.date?.message}
+                />
+              )}
             />
-            {errors.date && <p className="text-[10px] text-red-400 ml-1 font-bold">{errors.date.message}</p>}
           </div>
         </div>
 
