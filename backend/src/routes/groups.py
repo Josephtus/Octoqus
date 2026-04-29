@@ -23,6 +23,7 @@ Endpoints:
 import structlog
 import string
 import secrets
+import json
 from pydantic import BaseModel, ValidationError, field_validator
 from sanic import Blueprint, Request
 from sanic.exceptions import BadRequest, Forbidden, NotFound
@@ -778,7 +779,15 @@ async def update_group(request: Request, group_id: int) -> HTTPResponse:
 
     async with get_session() as session:
         group = await _get_approved_group(session, group_id)
-        await _get_leader_membership(session, group_id, requester_id)
+        
+        # Sadece isim veya açıklama güncelleniyorsa Lider yetkisi ara
+        if data.name is not None or data.content is not None:
+            await _get_leader_membership(session, group_id, requester_id)
+        else:
+            # Sadece özel kategoriler güncelleniyorsa, onaylı üye olmak yeterli
+            membership = await _get_membership(session, group_id, requester_id)
+            if not membership or not membership.is_approved:
+                raise Forbidden("Bu işlemi yapmak için grupta onaylı üye olmalısınız.")
 
         updated_fields = {}
 
@@ -789,6 +798,10 @@ async def update_group(request: Request, group_id: int) -> HTTPResponse:
         if data.content is not None:
             group.content = data.content
             updated_fields["content"] = data.content
+
+        if data.custom_categories is not None:
+            group.custom_categories = data.custom_categories
+            updated_fields["custom_categories"] = data.custom_categories
 
         if not updated_fields:
             return sanic_json({"message": "Değişiklik yapılmadı."}, status=200)
@@ -807,6 +820,70 @@ async def update_group(request: Request, group_id: int) -> HTTPResponse:
             },
             status=200
         )
+
+
+# =============================================================================
+# ENDPOINT 7.5: DELETE /api/groups/<group_id>/categories — Özel Kategori Sil
+# =============================================================================
+
+@groups_bp.delete("/<group_id:int>/categories")
+@protected
+async def delete_custom_category(request: Request, group_id: int) -> HTTPResponse:
+    """
+    Özel bir kategoriyi siler ve bu kategoriye bağlı harcamaları 'Diğer' yapar.
+    """
+    requester_id: int = int(request.ctx.user["sub"])
+    category_name = request.args.get("name")
+
+    if not category_name:
+        raise BadRequest("Silinecek kategori adı ('name' query parametresi) gereklidir.")
+
+    async with get_session() as session:
+        group = await _get_approved_group(session, group_id)
+        
+        # Onaylı üyelik kontrolü
+        membership = await _get_membership(session, group_id, requester_id)
+        if not membership or not membership.is_approved:
+            raise Forbidden("Bu işlemi yapmak için grupta onaylı üye olmalısınız.")
+
+        # Mevcut kategorileri al
+        try:
+            custom_cats = json.loads(group.custom_categories) if group.custom_categories else []
+        except:
+            custom_cats = []
+
+        # Kategoriyi listeden çıkar
+        new_cats = [c for c in custom_cats if c["name"] != category_name]
+        
+        if len(new_cats) == len(custom_cats):
+            raise NotFound(f"'{category_name}' isimli özel kategori bulunamadı.")
+
+        # Grubu güncelle
+        group.custom_categories = json.dumps(new_cats) if new_cats else None
+        
+        # Bu kategoriye bağlı harcamaları 'Diğer' olarak güncelle
+        from sqlalchemy import update
+        from src.models import Expense
+        stmt = (
+            update(Expense)
+            .where(Expense.group_id == group_id, Expense.category == category_name)
+            .values(category="Diğer")
+        )
+        await session.execute(stmt)
+        
+        await session.commit()
+        
+        logger.info(
+            "group.category.deleted",
+            group_id=group_id,
+            user_id=requester_id,
+            category_name=category_name
+        )
+
+        return sanic_json({
+            "message": f"'{category_name}' kategorisi silindi ve ilgili harcamalar 'Diğer' kategorisine taşındı.",
+            "group": _build_group_response(group)
+        })
 
 
 # =============================================================================

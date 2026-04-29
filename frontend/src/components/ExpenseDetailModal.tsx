@@ -1,6 +1,7 @@
 import React from 'react';
 import { getImageUrl } from '../utils/api';
 import { motion } from 'framer-motion';
+import { getCategoryIcon, type Category } from '../utils/categories';
 
 interface Expense {
   id: number;
@@ -19,9 +20,10 @@ interface ExpenseDetailModalProps {
   expense: Expense;
   onClose: () => void;
   onViewUserProfile?: (userId: number) => void;
+  customCategories?: Category[];
 }
 
-export const ExpenseDetailModal: React.FC<ExpenseDetailModalProps> = ({ expense, onClose, onViewUserProfile }) => {
+export const ExpenseDetailModal: React.FC<ExpenseDetailModalProps> = ({ expense, onClose, onViewUserProfile, customCategories = [] }) => {
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '';
     const [year, month, day] = dateStr.split('-');
@@ -93,6 +95,7 @@ export const ExpenseDetailModal: React.FC<ExpenseDetailModalProps> = ({ expense,
               <div className="bg-slate-950/50 border border-slate-800/50 p-4 rounded-2xl col-span-2">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Kategori</label>
                 <div className="text-sm text-white font-bold flex items-center gap-2">
+                   <span>{getCategoryIcon(expense.category, customCategories)}</span>
                    {expense.category || 'Belirtilmemiş'}
                 </div>
               </div>
