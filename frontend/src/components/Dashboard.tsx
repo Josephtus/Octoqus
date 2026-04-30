@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { apiFetch, getImageUrl } from '../utils/api';
@@ -58,6 +58,19 @@ export const Dashboard: React.FC = () => {
   const [isNicknameModalOpen, setIsNicknameModalOpen] = useState(false);
   const [newNickname, setNewNickname] = useState('');
 
+  // Admin Redirection
+  useEffect(() => {
+    if (user?.role?.toLowerCase() === 'admin' && location.pathname === '/dashboard') {
+      navigate('/dashboard/admin');
+    }
+  }, [user, location.pathname, navigate]);
+
+  useEffect(() => {
+    if (activeGroup) {
+      apiFetch(`/groups/${activeGroup.id}/access`, { method: 'POST' }).catch(err => console.error(err));
+    }
+  }, [activeGroup?.id]);
+
   const handleLeaveGroup = async () => {
     if (!activeGroup) return;
     const confirmLeave = window.confirm("Bu gruptan ayrılmak istediğinize emin misiniz?");
@@ -96,16 +109,20 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  const navTabs: { id: TabType; path: string; icon: any; label: string }[] = [
-    { id: 'Ana Sayfa', path: '/dashboard', icon: LayoutDashboard, label: 'Panel' },
-    { id: 'Gruplar', path: '/dashboard/groups', icon: Users, label: 'Gruplar' },
-    { id: 'Sosyal', path: '/dashboard/social', icon: Share2, label: 'Sosyal' },
-    { id: 'Profil', path: '/dashboard/profile', icon: UserCircle, label: 'Profil' },
-    { id: 'Şikayet', path: '/dashboard/support', icon: Flag, label: 'Destek' },
-  ];
-  
+  let navTabs: { id: TabType; path: string; icon: any; label: string }[] = [];
+
   if (user?.role?.toLowerCase() === 'admin') {
-    navTabs.unshift({ id: 'Admin', path: '/dashboard/admin', icon: ShieldAlert, label: 'Yönetim' });
+    navTabs = [
+      { id: 'Admin', path: '/dashboard/admin', icon: ShieldAlert, label: 'Yönetim' }
+    ];
+  } else {
+    navTabs = [
+      { id: 'Ana Sayfa', path: '/dashboard', icon: LayoutDashboard, label: 'Panel' },
+      { id: 'Gruplar', path: '/dashboard/groups', icon: Users, label: 'Gruplar' },
+      { id: 'Sosyal', path: '/dashboard/social', icon: Share2, label: 'Sosyal' },
+      { id: 'Profil', path: '/dashboard/profile', icon: UserCircle, label: 'Profil' },
+      { id: 'Şikayet', path: '/dashboard/support', icon: Flag, label: 'Destek' },
+    ];
   }
 
   const handleTabClick = (tab: typeof navTabs[0]) => {
@@ -184,9 +201,11 @@ export const Dashboard: React.FC = () => {
                 <LogOut size={18} />
               </button>
               
-              <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="md:hidden p-2.5 rounded-xl bg-white/5 text-white">
-                {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
-              </button>
+              {navTabs.length > 1 && (
+                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="md:hidden p-2.5 rounded-xl bg-white/5 text-white">
+                  {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -246,7 +265,9 @@ export const Dashboard: React.FC = () => {
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 relative z-10">
                     <div className="flex items-center gap-6">
                       <button 
-                        onClick={() => { setActiveGroup(null); }}
+                        onClick={() => { 
+                          setActiveGroup(null); 
+                        }}
                         className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-white/10 transition-all group"
                       >
                         <ChevronRight size={20} className="rotate-180 group-hover:-translate-x-0.5 transition-transform" />
@@ -256,6 +277,22 @@ export const Dashboard: React.FC = () => {
                           <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest ${activeGroup.role?.toUpperCase() === 'GROUP_LEADER' ? 'bg-amber-500 text-black' : 'bg-[#00f0ff] text-black'}`}>
                             {activeGroup.role?.toUpperCase() === 'GROUP_LEADER' ? 'Lider' : 'Üye'}
                           </span>
+                          <button 
+                            onClick={async () => {
+                              try {
+                                const res = await apiFetch(`/groups/${activeGroup.id}/star`, { method: 'POST' });
+                                if (res.ok) {
+                                  const data = await res.json();
+                                  setActiveGroup({ ...activeGroup, is_starred: data.is_starred });
+                                  triggerRefresh();
+                                }
+                              } catch (err) { console.error(err); }
+                            }}
+                            className={`p-1 rounded-lg transition-all ${activeGroup.is_starred ? 'text-amber-500' : 'text-slate-500 hover:text-amber-500'}`}
+                            title="Yıldızla"
+                          >
+                            <span className="text-sm">{activeGroup.is_starred ? '★' : '☆'}</span>
+                          </button>
                           {!activeGroup.isApproved && (
                             <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest bg-orange-500/20 text-orange-500 border border-orange-500/30 animate-pulse">
                               Onay Bekliyor

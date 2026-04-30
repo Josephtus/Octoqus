@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { apiFetch } from '../../utils/api';
 import { Pagination } from '../common/Pagination';
+import { Users } from 'lucide-react';
 
 interface SortHeaderProps {
   label: string;
@@ -163,8 +164,71 @@ export const AdminUsers: React.FC = () => {
       fetchUserDetails(viewingDetails);
     } else {
       setDetails(null);
+      setGroupSearch('');
+      setFoundGroups([]);
     }
   }, [viewingDetails]);
+
+  const [groupSearch, setGroupSearch] = useState('');
+  const [foundGroups, setFoundGroups] = useState<any[]>([]);
+  const [activeDetailTab, setActiveDetailTab] = useState<'overview' | 'groups' | 'security'>('overview');
+
+  const searchGroups = async (q: string) => {
+    if (q.length < 2) return;
+    try {
+      const res = await apiFetch(`/admin/groups?q=${encodeURIComponent(q)}&limit=5`);
+      const data = await res.json();
+      setFoundGroups(data.groups || []);
+    } catch (err) {}
+  };
+
+  const handleAddUserToGroup = async (groupId: number) => {
+    if (!viewingDetails) return;
+    try {
+      await apiFetch(`/admin/users/${viewingDetails}/groups/${groupId}`, { method: 'POST' });
+      fetchUserDetails(viewingDetails);
+      setGroupSearch('');
+      setFoundGroups([]);
+    } catch (err) {
+      alert("Hata oluştu");
+    }
+  };
+
+  const handleRemoveFromGroup = async (groupId: number) => {
+    if (!viewingDetails || !window.confirm("Kullanıcıyı bu gruptan çıkarmak istediğinize emin misiniz?")) return;
+    try {
+      await apiFetch(`/admin/users/${viewingDetails}/groups/${groupId}`, { method: 'DELETE' });
+      fetchUserDetails(viewingDetails);
+    } catch (err) {
+      alert("İşlem başarısız");
+    }
+  };
+
+  const handleChangeGroupRole = async (groupId: number, newRole: string) => {
+    if (!viewingDetails) return;
+    try {
+      await apiFetch(`/admin/users/${viewingDetails}/groups/${groupId}/role`, { 
+        method: 'PUT',
+        body: JSON.stringify({ role: newRole })
+      });
+      fetchUserDetails(viewingDetails);
+    } catch (err) {
+      alert("Rol güncellenemedi");
+    }
+  };
+
+  const handleTransferLeader = async (groupId: number) => {
+    if (!viewingDetails) return;
+    try {
+      await apiFetch(`/admin/groups/${groupId}/transfer_leadership`, {
+        method: 'POST',
+        body: JSON.stringify({ target_user_id: viewingDetails })
+      });
+      fetchUserDetails(viewingDetails);
+    } catch (err) {
+      alert("Liderlik devri başarısız");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -223,64 +287,72 @@ export const AdminUsers: React.FC = () => {
                       <th className="py-4 px-3 text-right">İşlemler</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/50">
+                  <tbody className="divide-y divide-slate-800/40">
                     {users.map(user => (
-                      <tr key={user.id} className="hover:bg-slate-800/30 transition-colors group">
-                        <td className="py-4 px-3 text-slate-500 font-mono text-xs">#{user.id}</td>
-                        <td className="py-4 px-3 text-slate-100 font-bold text-xs">{user.name}</td>
-                        <td className="py-4 px-3 text-slate-100 font-bold text-xs">{user.surname}</td>
-                        <td className="py-4 px-3 text-slate-400 text-[11px] font-medium">{user.mail}</td>
-                        <td className="py-4 px-3 text-slate-500 text-[11px]">{user.phone_number}</td>
-                        <td className="py-4 px-3 text-slate-400 text-[11px] whitespace-nowrap">
-                          {user.birthday ? new Date(user.birthday).toLocaleDateString() : '-'}
-                          {user.age ? <span className="ml-1 text-slate-600">({user.age} yaş)</span> : null}
+                      <tr key={user.id} className="hover:bg-slate-800/20 transition-colors group">
+                        <td className="py-3 px-3 text-slate-500 font-mono text-[10px]">#{user.id}</td>
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-lg bg-slate-800 flex items-center justify-center text-[10px]">👤</div>
+                            <span className="text-slate-200 font-bold text-xs">{user.name}</span>
+                          </div>
                         </td>
-                        <td className="py-4 px-3">
-                          <div className="flex flex-wrap gap-1 max-w-[120px]">
+                        <td className="py-3 px-3 text-slate-200 font-bold text-xs">{user.surname}</td>
+                        <td className="py-3 px-3 text-slate-400 text-[10px] font-medium">{user.mail}</td>
+                        <td className="py-3 px-3 text-slate-500 text-[10px]">{user.phone_number}</td>
+                        <td className="py-3 px-3 text-slate-400 text-[10px] whitespace-nowrap">
+                          {user.birthday ? new Date(user.birthday).toLocaleDateString('tr-TR') : '-'}
+                          {user.age ? <span className="ml-1 text-slate-600 font-black">({user.age})</span> : null}
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="flex flex-wrap gap-1 max-w-[150px]">
                             {user.joined_groups?.map(g => (
-                              <span key={g.id} className="px-1.5 py-0.5 bg-slate-800 text-slate-400 rounded text-[9px] border border-slate-700">
+                              <span key={g.id} className="px-1.5 py-0.5 bg-slate-800/50 text-slate-500 rounded border border-slate-700/50 text-[8px] font-black">
                                 {g.name}
                               </span>
-                            )) || <span className="text-slate-600 text-[10px] italic">Yok</span>}
+                            )) || <span className="text-slate-700 text-[8px] font-black">—</span>}
                           </div>
                         </td>
-                        <td className="py-4 px-3">
-                          <div className="flex flex-wrap gap-1 max-w-[120px]">
+                        <td className="py-3 px-3">
+                          <div className="flex flex-wrap gap-1 max-w-[150px]">
                             {user.led_groups?.map(g => (
-                              <span key={g.id} className="px-1.5 py-0.5 bg-purple-500/10 text-purple-400 rounded text-[9px] border border-purple-500/20">
+                              <span key={g.id} className="px-1.5 py-0.5 bg-purple-500/5 text-purple-400/70 rounded border border-purple-500/10 text-[8px] font-black">
                                 {g.name}
                               </span>
-                            )) || <span className="text-slate-600 text-[10px] italic">Yok</span>}
+                            )) || <span className="text-slate-700 text-[8px] font-black">—</span>}
                           </div>
                         </td>
-                        <td className="py-4 px-3">
-                          <span className={`text-[9px] font-black px-2 py-0.5 rounded w-fit ${
-                            user.role?.toUpperCase() === 'ADMIN' ? 'bg-[#00f0ff]/10 text-[#00f0ff]' :
-                            user.role?.toUpperCase() === 'GROUP_LEADER' ? 'bg-purple-500/10 text-purple-400' :
-                            'bg-slate-700 text-slate-400'
+                        <td className="py-3 px-3">
+                          <span className={`text-[8px] font-black px-2 py-0.5 rounded border ${
+                            user.role?.toUpperCase() === 'ADMIN' ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' :
+                            user.role?.toUpperCase() === 'GROUP_LEADER' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' :
+                            'bg-slate-800 text-slate-400 border-slate-700'
                           }`}>
                             {user.role}
                           </span>
                         </td>
-                        <td className="py-4 px-3">
-                          <span className={`text-[9px] font-black px-2 py-0.5 rounded w-fit ${
-                            user.is_active ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
-                          }`}>
-                            {user.is_active ? 'AKTİF' : 'ENGELİ'}
-                          </span>
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-1.5">
+                            <div className={`w-1.5 h-1.5 rounded-full ${user.is_active ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]'}`} />
+                            <span className={`text-[9px] font-black ${
+                              user.is_active ? 'text-emerald-400' : 'text-red-400'
+                            }`}>
+                              {user.is_active ? 'AKTİF' : 'ENGELİ'}
+                            </span>
+                          </div>
                         </td>
-                        <td className="py-4 px-3 text-right">
-                          <div className="flex justify-end gap-1.5">
+                        <td className="py-3 px-3 text-right">
+                          <div className="flex justify-end gap-1">
                             <button 
                               onClick={() => setViewingDetails(user.id)}
-                              className="p-2 bg-slate-800 text-slate-400 rounded-lg hover:bg-[#00f0ff] hover:text-slate-950 transition-all"
+                              className="w-8 h-8 flex items-center justify-center bg-slate-800/50 text-slate-400 rounded-lg hover:bg-cyan-500 hover:text-white transition-all"
                               title="Detaylar"
                             >
-                              🔍
+                              <Users size={12} />
                             </button>
                             <button 
                               onClick={() => setEditingUser(user)}
-                              className="p-2 bg-slate-800 text-slate-400 rounded-lg hover:bg-[#b026ff] hover:text-white transition-all"
+                              className="w-8 h-8 flex items-center justify-center bg-slate-800/50 text-slate-400 rounded-lg hover:bg-amber-500 hover:text-white transition-all"
                               title="Düzenle"
                             >
                               ✏️
@@ -288,10 +360,10 @@ export const AdminUsers: React.FC = () => {
                             {user.role !== 'ADMIN' && (
                               <button 
                                 onClick={() => toggleUserStatus(user.id, user.is_active)}
-                                className={`p-2 rounded-lg transition-all ${
+                                className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all ${
                                   user.is_active 
                                   ? 'bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white' 
-                                  : 'bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-white'
+                                  : 'bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white'
                                 }`}
                                 title={user.is_active ? "Engelle" : "Engeli Kaldır"}
                               >
@@ -325,78 +397,199 @@ export const AdminUsers: React.FC = () => {
       {viewingDetails && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[60] flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 w-full max-w-4xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-800/50">
-              <div>
-                <h4 className="text-xl font-bold text-slate-100 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-[#00f0ff] animate-pulse"></span>
-                  Kullanıcı Aktivite Detayları
-                </h4>
-                {details && <p className="text-slate-500 text-xs mt-1">{details.user.name} {details.user.surname} - #{details.user.id}</p>}
-              </div>
-              <button onClick={() => setViewingDetails(null)} className="p-2 hover:bg-slate-700 rounded-xl transition-colors">✕</button>
+            <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex gap-4 overflow-x-auto">
+              <button 
+                onClick={() => setActiveDetailTab('overview')} 
+                className={`px-6 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all whitespace-nowrap ${activeDetailTab === 'overview' ? 'bg-[#00f0ff] text-slate-950' : 'text-slate-500 hover:text-white'}`}
+              >
+                GENEL BAKIŞ
+              </button>
+              <button 
+                onClick={() => setActiveDetailTab('groups')} 
+                className={`px-6 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all whitespace-nowrap ${activeDetailTab === 'groups' ? 'bg-[#00f0ff] text-slate-950' : 'text-slate-500 hover:text-white'}`}
+              >
+                GRUP YÖNETİMİ
+              </button>
+              <button 
+                onClick={() => setActiveDetailTab('security')} 
+                className={`px-6 py-2 rounded-xl text-[10px] font-black tracking-widest transition-all whitespace-nowrap ${activeDetailTab === 'security' ? 'bg-[#00f0ff] text-slate-950' : 'text-slate-500 hover:text-white'}`}
+              >
+                GÜVENLİK & BAN
+              </button>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-8 space-y-8">
+            <div className="flex-1 overflow-y-auto p-8">
               {loadingDetails ? (
                 <div className="flex flex-col items-center justify-center py-20 gap-4">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#00f0ff]"></div>
                   <p className="text-slate-500 animate-pulse text-sm">Veriler toplanıyor...</p>
                 </div>
               ) : details && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                  <div className="space-y-6">
-                    <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800">
-                      <h5 className="text-xs font-black text-[#00f0ff] uppercase tracking-widest mb-4">Profil Bilgileri</h5>
-                      <div className="space-y-4">
-                        <div>
-                          <label className="text-[10px] text-slate-500 font-bold uppercase block">Kayıt Tarihi</label>
-                          <div className="text-slate-200 text-sm font-bold">{new Date(details.user.created_at).toLocaleString()}</div>
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-slate-500 font-bold uppercase block">Son Durum</label>
-                          <div className={`text-sm font-bold ${details.user.is_active ? 'text-green-400' : 'text-red-400'}`}>
-                            {details.user.is_active ? 'Hesap Aktif' : 'Hesap Engelli'}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800">
-                      <h5 className="text-xs font-black text-[#00f0ff] uppercase tracking-widest mb-4">Grup Üyelikleri</h5>
-                      <div className="space-y-3">
-                        {details.memberships.map((m) => (
-                          <div key={m.group_id} className="flex justify-between items-center p-3 bg-slate-900 rounded-xl border border-slate-800">
+                <div className="space-y-8">
+                  {activeDetailTab === 'overview' && (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                      <div className="space-y-6">
+                        <div className="bg-slate-950/50 p-6 rounded-3xl border border-white/5">
+                          <h5 className="text-[10px] font-black text-[#00f0ff] uppercase tracking-widest mb-6 flex items-center gap-2">
+                            <Users size={12} /> Profil Künyesi
+                          </h5>
+                          <div className="space-y-5">
                             <div>
-                              <span className="text-slate-200 font-bold text-sm block">{m.group_name}</span>
-                              <span className="text-[10px] text-slate-500">Katılım: {new Date(m.joined_at).toLocaleDateString()}</span>
+                              <label className="text-[8px] text-slate-500 font-black uppercase tracking-tighter block mb-1">Hesap Oluşturma</label>
+                              <div className="text-slate-200 text-xs font-bold">{new Date(details.user.created_at).toLocaleString('tr-TR')}</div>
                             </div>
-                            <span className={`text-[9px] font-black px-2 py-1 rounded ${m.role?.toUpperCase() === 'GROUP_LEADER' ? 'bg-purple-500/20 text-purple-400' : 'bg-slate-800 text-slate-400'}`}>
-                              {m.role}
-                            </span>
+                            <div>
+                              <label className="text-[8px] text-slate-500 font-black uppercase tracking-tighter block mb-1">Global Rol</label>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-black ${details.user.role === 'ADMIN' ? 'bg-cyan-500/20 text-cyan-400' : 'bg-slate-800 text-slate-400'}`}>
+                                  {details.user.role}
+                                </span>
+                              </div>
+                            </div>
+                            <div>
+                              <label className="text-[8px] text-slate-500 font-black uppercase tracking-tighter block mb-1">Durum</label>
+                              <div className={`text-xs font-black flex items-center gap-2 ${details.user.is_active ? 'text-emerald-400' : 'text-red-400'}`}>
+                                <div className={`w-1.5 h-1.5 rounded-full ${details.user.is_active ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                                {details.user.is_active ? 'AKTİF KULLANICI' : 'ERİŞİM ENGELLİ'}
+                              </div>
+                            </div>
                           </div>
-                        ))}
-                        {details.memberships.length === 0 && <p className="text-slate-600 text-sm italic">Herhangi bir gruba üye değil.</p>}
+                        </div>
+                      </div>
+                      
+                      <div className="lg:col-span-2 space-y-6">
+                        <div className="bg-slate-950/50 p-6 rounded-3xl border border-white/5">
+                          <h5 className="text-[10px] font-black text-white/50 uppercase tracking-widest mb-6">Son Chat Mesajları</h5>
+                          <div className="space-y-3">
+                            {details.messages.slice(0, 5).map((msg) => (
+                              <div key={msg.id} className="p-4 bg-white/5 rounded-2xl border border-white/5 group hover:border-white/10 transition-all">
+                                <div className="flex justify-between mb-2">
+                                  <span className="text-[#00f0ff] font-black text-[10px] uppercase tracking-tighter">{msg.group_name}</span>
+                                  <span className="text-[9px] text-slate-600 font-bold">{new Date(msg.timestamp).toLocaleString('tr-TR')}</span>
+                                </div>
+                                <p className="text-slate-300 text-xs font-medium leading-relaxed">"{msg.message_text}"</p>
+                              </div>
+                            ))}
+                            {details.messages.length === 0 && <p className="text-slate-600 text-xs italic py-4">Henüz hiç mesaj gönderilmemiş.</p>}
+                          </div>
+                        </div>
                       </div>
                     </div>
+                  )}
 
-                    <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800">
-                      <h5 className="text-xs font-black text-[#00f0ff] uppercase tracking-widest mb-4">Son Chat Mesajları</h5>
-                      <div className="space-y-3">
-                        {details.messages.map((msg) => (
-                          <div key={msg.id} className="p-3 bg-slate-900 rounded-xl border border-slate-800">
-                            <div className="flex justify-between mb-1">
-                              <span className="text-[#00f0ff] font-bold text-[10px]">{msg.group_name}</span>
-                              <span className="text-[9px] text-slate-600">{new Date(msg.timestamp).toLocaleString()}</span>
-                            </div>
-                            <p className="text-slate-300 text-xs italic">"{msg.message_text}"</p>
+                  {activeDetailTab === 'groups' && (
+                    <div className="space-y-8">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="bg-slate-950/50 p-6 rounded-3xl border border-white/5">
+                          <h5 className="text-[10px] font-black text-[#00f0ff] uppercase tracking-widest mb-6">Mevcut Üyelikler</h5>
+                          <div className="space-y-4">
+                            {details.memberships.map((m) => (
+                              <div key={m.group_id} className="p-4 bg-white/5 rounded-2xl border border-white/5 flex items-center justify-between group">
+                                <div className="flex-1">
+                                  <span className="text-slate-100 font-black text-sm block">{m.group_name}</span>
+                                  <div className="flex items-center gap-3 mt-1">
+                                    <span className="text-[9px] text-slate-500 font-bold">KATILIM: {new Date(m.joined_at).toLocaleDateString('tr-TR')}</span>
+                                    <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border ${m.role === 'GROUP_LEADER' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' : 'bg-slate-800 text-slate-500 border-slate-700'}`}>
+                                      {m.role}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex gap-2">
+                                  {m.role !== 'GROUP_LEADER' ? (
+                                    <>
+                                      <button 
+                                        onClick={() => handleTransferLeader(m.group_id)}
+                                        className="p-2 bg-purple-500/10 text-purple-400 rounded-lg hover:bg-purple-500 hover:text-white transition-all text-[10px] font-black uppercase tracking-tighter"
+                                        title="Lider Yap"
+                                      >
+                                        LİDER YAP
+                                      </button>
+                                      <button 
+                                        onClick={() => handleRemoveFromGroup(m.group_id)}
+                                        className="p-2 bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-all"
+                                        title="Gruptan Çıkar"
+                                      >
+                                        🗑️
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <button 
+                                      onClick={() => handleChangeGroupRole(m.group_id, 'USER')}
+                                      className="p-2 bg-slate-800 text-slate-400 rounded-lg hover:bg-amber-500 hover:text-white transition-all text-[10px] font-black uppercase tracking-tighter"
+                                      title="Üyeye Dönüştür"
+                                    >
+                                      ÜYE YAP
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                            {details.memberships.length === 0 && <p className="text-slate-600 text-sm italic">Henüz bir gruba üye değil.</p>}
                           </div>
-                        ))}
-                        {details.messages.length === 0 && <p className="text-slate-600 text-sm italic">Henüz hiç mesaj göndermemiş.</p>}
+                        </div>
+
+                        <div className="bg-slate-950/50 p-6 rounded-3xl border border-white/5">
+                          <h5 className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-6">Gruba Manuel Ekle</h5>
+                          <div className="space-y-4">
+                            <div className="relative">
+                              <input 
+                                type="text"
+                                placeholder="Grup ismi ile ara..."
+                                className="w-full bg-slate-900 border border-white/10 rounded-2xl p-4 text-white text-xs outline-none focus:border-[#00f0ff] transition-all"
+                                value={groupSearch}
+                                onChange={(e) => {
+                                  setGroupSearch(e.target.value);
+                                  searchGroups(e.target.value);
+                                }}
+                              />
+                            </div>
+                            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                              {foundGroups.map(g => (
+                                <div key={g.id} className="p-3 bg-white/5 rounded-xl border border-white/5 flex items-center justify-between hover:bg-white/10 transition-all">
+                                  <div>
+                                    <span className="text-slate-200 font-bold text-xs">{g.name}</span>
+                                    <p className="text-[9px] text-slate-500 truncate max-w-[150px]">{g.content}</p>
+                                  </div>
+                                  <button 
+                                    onClick={() => handleAddUserToGroup(g.id)}
+                                    className="px-4 py-1.5 bg-[#00f0ff] text-slate-950 rounded-lg font-black text-[9px] uppercase tracking-widest hover:scale-105 transition-all"
+                                  >
+                                    EKLE
+                                  </button>
+                                </div>
+                              ))}
+                              {groupSearch.length >= 2 && foundGroups.length === 0 && <p className="text-slate-600 text-center text-[10px] py-4">Sonuç bulunamadı.</p>}
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
+
+                  {activeDetailTab === 'security' && (
+                    <div className="max-w-2xl mx-auto space-y-6">
+                      <div className="bg-red-500/5 border border-red-500/20 rounded-[32px] p-8">
+                        <h5 className="text-lg font-black text-red-500 mb-4">Tehlikeli İşlemler</h5>
+                        <p className="text-slate-400 text-sm mb-8 font-medium leading-relaxed">
+                          Bu panel üzerinden kullanıcının platforma erişimini tamamen engelleyebilir veya kısıtlamalarını kaldırabilirsiniz. 
+                          Yapılan her işlem denetim izine (audit log) kaydedilir.
+                        </p>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <button 
+                            onClick={() => toggleUserStatus(details.user.id, details.user.is_active)}
+                            className={`flex items-center justify-center gap-3 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${
+                              details.user.is_active 
+                              ? 'bg-red-500 text-white hover:bg-red-600' 
+                              : 'bg-emerald-500 text-white hover:bg-emerald-600'
+                            }`}
+                          >
+                            {details.user.is_active ? '🚫 ERİŞİMİ ENGELLE (BAN)' : '✅ ENGELİ KALDIR'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

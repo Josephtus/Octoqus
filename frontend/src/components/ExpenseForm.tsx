@@ -1,39 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { apiFetch } from '../utils/api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
+import { DatePicker } from './common/DatePicker';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useGroupStore } from '../store/groupStore';
 import { expenseSchema, type ExpenseFormData } from '../utils/validations';
+import { EMOJI_CATEGORIES } from '../utils/emojis';
+import { Trash2 } from 'lucide-react';
+import { DEFAULT_CATEGORIES, type Category } from '../utils/categories';
 
 interface ExpenseFormProps {
   onSuccess: () => void;
   onCancel: () => void;
 }
 
-interface Category {
-  name: string;
-  icon: string;
-}
-
-const DEFAULT_CATEGORIES: Category[] = [
-  { name: 'Konaklama', icon: '🛌' },
-  { name: 'Eğlence', icon: '🎤' },
-  { name: 'Market Alışverişi', icon: '🛒' },
-  { name: 'Sağlık', icon: '🦷' },
-  { name: 'Sigorta', icon: '🧯' },
-  { name: 'Kira ve Masraflar', icon: '🏠' },
-  { name: 'Restoranlar ve Barlar', icon: '🍔' },
-  { name: 'Shopping', icon: '🛍️' },
-  { name: 'Transport', icon: '🚕' },
-  { name: 'Fatura', icon: '🧾' },
-  { name: 'Balık', icon: '🐟' },
-  { name: 'Yufkacı', icon: '🥟' },
-  { name: 'Kasap', icon: '🥩' },
-  { name: 'İçme suyu', icon: '💧' },
-  { name: 'Halı Yıkama', icon: '🧼' },
-  { name: 'Diğer', icon: '🖐️' },
-];
 
 export const ExpenseForm: React.FC<ExpenseFormProps> = ({ onSuccess, onCancel }) => {
   const { activeGroup } = useGroupStore();
@@ -50,11 +31,14 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ onSuccess, onCancel })
   const [isAddingCustom, setIsAddingCustom] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [newCatIcon, setNewCatIcon] = useState('📦');
+  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
+  const [activeEmojiCategory, setActiveEmojiCategory] = useState(0);
 
   const {
     register,
     handleSubmit,
     setValue,
+    control,
     formState: { errors },
   } = useForm<ExpenseFormData>({
     resolver: zodResolver(expenseSchema),
@@ -72,6 +56,8 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ onSuccess, onCancel })
         const data = await res.json();
         if (data.group.custom_categories) {
           setCustomCategories(JSON.parse(data.group.custom_categories));
+        } else {
+          setCustomCategories([]);
         }
       } catch (err) {
         console.error("Grup verisi çekilemedi:", err);
@@ -97,8 +83,39 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ onSuccess, onCancel })
       setValue('category', newCatName.trim());
       setIsAddingCustom(false);
       setNewCatName('');
-    } catch (err) {
-      alert("Kategori eklenirken hata oluştu.");
+    } catch (err: any) {
+      alert("Kategori eklenirken hata oluştu: " + (err.message || "Bilinmeyen hata"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteCustomCategory = async (e: React.MouseEvent, catName: string) => {
+    e.stopPropagation();
+    if (!groupId) return;
+    if (!window.confirm(`'${catName}' kategorisini silmek istediğinize emin misiniz? Bu kategoriye ait harcamalar 'Diğer' kategorisine taşınacaktır.`)) return;
+
+    try {
+      setLoading(true);
+      const res = await apiFetch(`/groups/${groupId}/categories?name=${encodeURIComponent(catName)}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      
+      if (data.group.custom_categories) {
+        setCustomCategories(JSON.parse(data.group.custom_categories));
+      } else {
+        setCustomCategories([]);
+      }
+
+      if (selectedCategory.name === catName) {
+        setSelectedCategory(DEFAULT_CATEGORIES[DEFAULT_CATEGORIES.length - 1]); // Diğer
+        setValue('category', 'Diğer');
+      }
+      
+      alert(data.message);
+    } catch (err: any) {
+      alert("Kategori silinirken hata oluştu: " + (err.message || "Bilinmeyen hata"));
     } finally {
       setLoading(false);
     }
@@ -153,35 +170,89 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ onSuccess, onCancel })
            <div className="w-10" />
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-8">
           <div>
-            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Kategori adı</label>
+            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 ml-1">Kategori adı</label>
             <input 
               type="text" 
               value={newCatName}
               onChange={(e) => setNewCatName(e.target.value)}
               placeholder="Örn: Halı Yıkama"
-              className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 text-white font-bold focus:border-[#00f0ff] outline-none transition-all"
+              className="w-full bg-slate-950 border border-white/5 rounded-2xl p-5 text-white font-bold focus:border-[#00f0ff] outline-none transition-all placeholder:text-slate-700"
             />
           </div>
 
-          <div>
-            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Simge (Emoji)</label>
-            <input 
-              type="text" 
-              value={newCatIcon}
-              onChange={(e) => setNewCatIcon(e.target.value)}
-              placeholder="📦"
-              className="w-full bg-slate-950 border border-white/5 rounded-2xl p-4 text-white text-2xl text-center focus:border-[#00f0ff] outline-none transition-all"
-            />
+          <div className="relative">
+            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 ml-1">Simge Seçin</label>
+            <button 
+              onClick={() => setIsEmojiPickerOpen(!isEmojiPickerOpen)}
+              className="w-full bg-slate-950 border border-white/5 rounded-2xl p-8 text-white text-5xl flex items-center justify-center hover:border-[#00f0ff]/50 transition-all group relative overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-[#00f0ff]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <span className="relative z-10 filter drop-shadow-2xl">{newCatIcon}</span>
+              <div className="absolute bottom-3 right-4 text-[10px] font-black text-slate-600 uppercase tracking-tighter opacity-0 group-hover:opacity-100 transition-all">Değiştir</div>
+            </button>
+
+            <AnimatePresence>
+              {isEmojiPickerOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  className="absolute z-50 top-full left-0 right-0 mt-4 bg-slate-900 border border-white/10 rounded-[32px] shadow-2xl overflow-hidden flex flex-col"
+                >
+                  {/* Category Tabs */}
+                  <div className="flex overflow-x-auto custom-scrollbar bg-slate-950/50 p-2 gap-1 border-b border-white/5">
+                    {EMOJI_CATEGORIES.map((cat, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setActiveEmojiCategory(idx)}
+                        className={`shrink-0 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                          activeEmojiCategory === idx 
+                            ? 'bg-white text-slate-950' 
+                            : 'text-slate-500 hover:text-white hover:bg-white/5'
+                        }`}
+                      >
+                        {cat.name}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Emoji Grid */}
+                  <div className="grid grid-cols-6 gap-2 p-4 max-h-[240px] overflow-y-auto custom-scrollbar bg-slate-900/50">
+                    {EMOJI_CATEGORIES[activeEmojiCategory].emojis.map((emoji, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setNewCatIcon(emoji);
+                          setIsEmojiPickerOpen(false);
+                        }}
+                        className="aspect-square flex items-center justify-center text-2xl hover:bg-white/10 rounded-xl transition-all hover:scale-110 active:scale-90"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  <div className="p-3 bg-slate-950/30 text-center border-t border-white/5">
+                    <button 
+                      onClick={() => setIsEmojiPickerOpen(false)}
+                      className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] hover:text-white transition-colors"
+                    >
+                      Kapat
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           <button 
             onClick={handleAddCustomCategory}
             disabled={loading || !newCatName.trim()}
-            className="w-full bg-[#00f0ff] text-slate-950 font-black py-4 rounded-2xl uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
+            className="w-full bg-[#00f0ff] text-slate-950 font-black py-5 rounded-2xl uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 shadow-xl shadow-[#00f0ff]/20"
           >
-            Özel Kategori Ekle
+            {loading ? 'Ekleniyor...' : 'Özel Kategori Ekle'}
           </button>
         </div>
       </div>
@@ -225,21 +296,35 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ onSuccess, onCancel })
                 className="absolute z-50 top-full left-0 right-0 mt-2 bg-slate-900 border border-white/10 rounded-3xl shadow-2xl overflow-hidden"
               >
                 <div className="max-h-[300px] overflow-y-auto custom-scrollbar p-2">
-                  {allCategories.map((cat, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => { 
-                        setSelectedCategory(cat); 
-                        setValue('category', cat.name);
-                        setIsCategoryListOpen(false); 
-                      }}
-                      className="w-full flex items-center gap-4 p-3 hover:bg-white/5 rounded-xl transition-all"
-                    >
-                      <span className="text-xl">{cat.icon}</span>
-                      <span className="text-slate-300 font-bold text-sm">{cat.name}</span>
-                    </button>
-                  ))}
+                  {allCategories.map((cat, idx) => {
+                    const isCustom = idx >= DEFAULT_CATEGORIES.length;
+                    return (
+                      <div key={idx} className="flex items-center group/item">
+                        <button
+                          type="button"
+                          onClick={() => { 
+                            setSelectedCategory(cat); 
+                            setValue('category', cat.name);
+                            setIsCategoryListOpen(false); 
+                          }}
+                          className="flex-1 flex items-center gap-4 p-3 hover:bg-white/5 rounded-xl transition-all"
+                        >
+                          <span className="text-xl">{cat.icon}</span>
+                          <span className="text-slate-300 font-bold text-sm">{cat.name}</span>
+                        </button>
+                        {isCustom && (
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteCustomCategory(e, cat.name)}
+                            className="p-3 text-slate-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover/item:opacity-100"
+                            title="Kategoriyi Sil"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                   <div className="h-px bg-white/5 my-2" />
                   <button
                     type="button"
@@ -270,15 +355,18 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({ onSuccess, onCancel })
           </div>
 
           <div className="space-y-1">
-            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-1">Tarih</label>
-            <input
-              type="date"
-              {...register('date')}
-              className={`w-full bg-slate-950 border transition-all rounded-2xl p-4 text-white font-bold focus:outline-none ${
-                errors.date ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#00f0ff]'
-              }`}
+            <Controller
+              control={control}
+              name="date"
+              render={({ field: { onChange, value } }) => (
+                <DatePicker
+                  label="Tarih"
+                  value={value}
+                  onChange={onChange}
+                  error={errors.date?.message}
+                />
+              )}
             />
-            {errors.date && <p className="text-[10px] text-red-400 ml-1 font-bold">{errors.date.message}</p>}
           </div>
         </div>
 

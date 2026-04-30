@@ -12,7 +12,7 @@ export const SocialList: React.FC = () => {
   const [users, setUsers] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
-  const [followingIds, setFollowingIds] = useState<number[]>([]);
+  const [friendshipStatuses, setFriendshipStatuses] = useState<Record<number, {status: string | null, sender_id?: number}>>({});
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const [selectedUser, setSelectedUser] = useState<any>(null);
@@ -27,18 +27,23 @@ export const SocialList: React.FC = () => {
     }
     setLoading(true);
     try {
-      const [usersRes, meRes] = await Promise.all([
-        apiFetch(`/users/search?q=${encodeURIComponent(search)}&page=${page}&limit=${limit}`),
-        apiFetch('/auth/me')
-      ]);
+      const usersRes = await apiFetch(`/users/search?q=${encodeURIComponent(search)}&page=${page}&limit=${limit}`);
       const usersData = await usersRes.json();
-      const meData = await meRes.json();
       
       setUsers(usersData.data || []);
       setTotalCount(usersData.total_count || 0);
       
-      if (meData.user?.following) {
-        setFollowingIds(meData.user.following.map((f: any) => f.id));
+      // Fetch statuses for found users
+      if (usersData.data && usersData.data.length > 0) {
+        const statusPromises = usersData.data.map((u: any) => 
+          apiFetch(`/social/status/${u.id}`).then(r => r.json().then(d => ({id: u.id, data: d})))
+        );
+        const statuses = await Promise.all(statusPromises);
+        const statusMap: any = {};
+        statuses.forEach(s => {
+          statusMap[s.id] = s.data;
+        });
+        setFriendshipStatuses(prev => ({...prev, ...statusMap}));
       }
     } catch (err) {
       console.error("Sosyal veri çekme hatası:", err);
@@ -55,43 +60,61 @@ export const SocialList: React.FC = () => {
     return () => clearTimeout(delayDebounceFn);
   }, [search, page]);
 
-  const toggleFollow = async (targetId: number, isFollowing: boolean) => {
+  const handleFriendAction = async (targetId: number, action: 'request' | 'accept' | 'decline' | 'remove') => {
     try {
-      const method = isFollowing ? 'DELETE' : 'POST';
-      const endpoint = isFollowing ? `/social/unfollow/${targetId}` : `/social/follow/${targetId}`;
-      await apiFetch(endpoint, { method });
-      setFollowingIds(prev => 
-        isFollowing ? prev.filter(id => id !== targetId) : [...prev, targetId]
-      );
+      let endpoint = '';
+      let method = 'POST';
+
+      if (action === 'request') endpoint = `/social/friend-request/${targetId}`;
+      else if (action === 'accept') endpoint = `/social/accept-request/${targetId}`;
+      else if (action === 'decline') endpoint = `/social/decline-request/${targetId}`;
+      else if (action === 'remove') {
+        endpoint = `/social/remove-friend/${targetId}`;
+        method = 'DELETE';
+      }
+
+      const res = await apiFetch(endpoint, { method });
+      if (res.ok) {
+        // Refresh status for this user
+        const statusRes = await apiFetch(`/social/status/${targetId}`);
+        const statusData = await statusRes.json();
+        setFriendshipStatuses(prev => ({...prev, [targetId]: statusData}));
+      }
     } catch (err) {
-      console.error("Takip hatası:", err);
+      console.error("Arkadaşlık işlemi hatası:", err);
     }
   };
 
   if (!currentUserId) return null;
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 p-8 rounded-[40px] shadow-2xl">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
-          <div>
-            <h2 className="text-3xl font-black text-white tracking-tighter">Sosyal Ağ</h2>
-            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Octoqus kullanıcıları ile bağlantı kur</p>
-          </div>
-          <div className="relative w-full max-w-md group">
-            <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-[#00f0ff] transition-colors" size={18} />
-            <input 
-              type="text" 
-              placeholder="İsim veya e-posta ile ara..."
-              className="w-full pl-14 pr-6 py-4 rounded-2xl bg-slate-950/50 border border-white/5 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all"
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            />
+    <div className="animate-fade-in max-w-7xl mx-auto">
+      <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[32px] shadow-2xl relative overflow-hidden flex flex-col">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-[#00f0ff]/5 blur-3xl rounded-full pointer-events-none" />
+        
+        {/* Header Section */}
+        <div className="p-8 relative z-10 border-b border-white/5">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-8">
+            <div>
+              <h2 className="text-3xl font-black text-white tracking-tighter">Sosyal Ağ</h2>
+              <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Octoqus kullanıcıları ile bağlantı kur</p>
+            </div>
+
+            <div className="relative w-full max-w-md group">
+              <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-[#00f0ff] transition-colors" size={18} />
+              <input 
+                type="text" 
+                placeholder="Davet kodu ile ara (Örn: #ABC123XYZ)..."
+                className="w-full pl-14 pr-6 py-4 rounded-2xl bg-slate-950/50 border border-white/5 text-white focus:outline-none focus:border-[#00f0ff]/50 transition-all"
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              />
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="bg-slate-900/40 backdrop-blur-3xl border border-white/5 rounded-[40px] p-6 md:p-10 shadow-2xl min-h-[600px] flex flex-col">
+        {/* Results Section */}
+        <div className="p-6 md:p-8 min-h-[200px] flex flex-col justify-center relative z-10">
         {loading && users.length === 0 ? (
           <div className="flex-1 flex justify-center items-center py-20">
             <div className="w-12 h-12 border-4 border-[#00f0ff]/20 border-t-[#00f0ff] rounded-full animate-spin" />
@@ -102,7 +125,10 @@ export const SocialList: React.FC = () => {
               {search.trim() ? (
                 <>
                   {users.filter(u => u.id !== currentUserId).map((user, index) => {
-                    const isFollowing = followingIds.includes(user.id);
+                    const statusData = friendshipStatuses[user.id] || { status: null };
+                    const status = statusData.status;
+                    const isSender = statusData.sender_id === currentUserId;
+
                     return (
                       <motion.div
                         key={user.id}
@@ -120,26 +146,52 @@ export const SocialList: React.FC = () => {
                               <div className="w-full h-full flex items-center justify-center text-lg">👤</div>
                             )}
                           </div>
-                          <div>
+                           <div>
                             <h4 className="text-sm font-black text-white tracking-tight">{user.name} {user.surname}</h4>
-                            <div className="flex items-center gap-2">
-                              <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{user.mail}</p>
-                              {user.age && <span className="text-[9px] text-[#00f0ff] font-black">{user.age} Yaş</span>}
-                            </div>
+                            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{user.mail}</p>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <button 
-                            onClick={() => toggleFollow(user.id, isFollowing)}
-                            className={`px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 ${
-                              isFollowing 
-                                ? 'bg-white/5 text-white border border-white/10 hover:bg-red-500/10 hover:text-red-500' 
-                                : 'bg-[#00f0ff] text-slate-950 shadow-lg shadow-[#00f0ff]/20 hover:scale-105'
-                            }`}
-                          >
-                            {isFollowing ? <><UserMinus size={14} /> Takipten Çık</> : <><UserPlus size={14} /> Takip Et</>}
-                          </button>
+                          {status === 'ACCEPTED' ? (
+                            <button 
+                              onClick={() => handleFriendAction(user.id, 'remove')}
+                              className="px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 bg-white/5 text-white border border-white/10 hover:bg-red-500/10 hover:text-red-500"
+                            >
+                              <UserMinus size={14} /> Arkadaşlıktan Çıkar
+                            </button>
+                          ) : status === 'PENDING' ? (
+                            isSender ? (
+                              <button 
+                                onClick={() => handleFriendAction(user.id, 'remove')}
+                                className="px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 bg-white/5 text-slate-400 border border-white/5 hover:text-red-500"
+                              >
+                                <X size={14} /> İsteği İptal Et
+                              </button>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <button 
+                                  onClick={() => handleFriendAction(user.id, 'accept')}
+                                  className="px-4 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 bg-[#00f0ff] text-slate-950"
+                                >
+                                  Onayla
+                                </button>
+                                <button 
+                                  onClick={() => handleFriendAction(user.id, 'decline')}
+                                  className="px-4 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 bg-white/5 text-white border border-white/10"
+                                >
+                                  Reddet
+                                </button>
+                              </div>
+                            )
+                          ) : (
+                            <button 
+                              onClick={() => handleFriendAction(user.id, 'request')}
+                              className="px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 bg-[#00f0ff] text-slate-950 shadow-lg shadow-[#00f0ff]/20 hover:scale-105"
+                            >
+                              <UserPlus size={14} /> Arkadaş Ekle
+                            </button>
+                          )}
                         </div>
                       </motion.div>
                     );
@@ -172,8 +224,9 @@ export const SocialList: React.FC = () => {
           </div>
         )}
       </div>
+    </div>
 
-      <AnimatePresence>
+    <AnimatePresence>
         {selectedUser && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div 
@@ -197,6 +250,12 @@ export const SocialList: React.FC = () => {
               </button>
 
               <div className="p-10 pt-16 flex flex-col items-center text-center relative z-0">
+                {(() => {
+                  const statusData = friendshipStatuses[selectedUser.id] || { status: null };
+                  const status = statusData.status;
+                  const isSender = statusData.sender_id === currentUserId;
+                  return (
+                    <>
                 <div className="w-32 h-32 rounded-[40px] bg-slate-800 border-4 border-white/10 overflow-hidden shadow-2xl mb-8">
                   {selectedUser.profile_photo ? (
                     <img src={getImageUrl(selectedUser.profile_photo) || ''} alt={selectedUser.name} className="w-full h-full object-cover" />
@@ -214,26 +273,52 @@ export const SocialList: React.FC = () => {
                     <Mail size={12} className="text-[#00f0ff]" />
                     {selectedUser.mail}
                   </div>
-                  {selectedUser.age && (
-                    <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-widest bg-white/5 px-4 py-2 rounded-full border border-white/5">
-                      <Calendar size={12} className="text-[#00f0ff]" />
-                      {selectedUser.age} Yaşında
-                    </div>
-                  )}
                 </div>
 
                 <div className="w-full">
-                  <button 
-                    onClick={() => toggleFollow(selectedUser.id, followingIds.includes(selectedUser.id))}
-                    className={`w-full py-5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-3 ${
-                      followingIds.includes(selectedUser.id)
-                        ? 'bg-white/5 text-white border border-white/10 hover:bg-red-500/10 hover:text-red-500'
-                        : 'bg-[#00f0ff] text-slate-950 shadow-xl shadow-[#00f0ff]/20 hover:scale-[1.02] active:scale-95'
-                    }`}
-                  >
-                    {followingIds.includes(selectedUser.id) ? <><UserMinus size={18} /> Takipten Çık</> : <><UserPlus size={18} /> Takip Et</>}
-                  </button>
+                  {status === 'ACCEPTED' ? (
+                    <button 
+                      onClick={() => handleFriendAction(selectedUser.id, 'remove')}
+                      className="w-full py-5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-3 bg-white/5 text-white border border-white/10 hover:bg-red-500/10 hover:text-red-500"
+                    >
+                      <UserMinus size={18} /> Arkadaşlıktan Çıkar
+                    </button>
+                  ) : status === 'PENDING' ? (
+                    isSender ? (
+                      <button 
+                        onClick={() => handleFriendAction(selectedUser.id, 'remove')}
+                        className="w-full py-5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-3 bg-white/5 text-slate-400 border border-white/5 hover:text-red-500"
+                      >
+                        <X size={18} /> İsteği İptal Et
+                      </button>
+                    ) : (
+                      <div className="flex flex-col gap-3 w-full">
+                        <button 
+                          onClick={() => handleFriendAction(selectedUser.id, 'accept')}
+                          className="w-full py-5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-3 bg-[#00f0ff] text-slate-950 shadow-xl shadow-[#00f0ff]/20"
+                        >
+                          Onayla
+                        </button>
+                        <button 
+                          onClick={() => handleFriendAction(selectedUser.id, 'decline')}
+                          className="w-full py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-3 bg-white/5 text-white border border-white/10"
+                        >
+                          Reddet
+                        </button>
+                      </div>
+                    )
+                  ) : (
+                    <button 
+                      onClick={() => handleFriendAction(selectedUser.id, 'request')}
+                      className="w-full py-5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-3 bg-[#00f0ff] text-slate-950 shadow-xl shadow-[#00f0ff]/20 hover:scale-[1.02] active:scale-95"
+                    >
+                      <UserPlus size={18} /> Arkadaş Ekle
+                    </button>
+                  )}
                 </div>
+                </>
+                  );
+                })()}
               </div>
             </motion.div>
           </div>

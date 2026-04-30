@@ -6,30 +6,8 @@ import { UserProfileModal } from './UserProfileModal';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../store/authStore';
 import { useGroupStore } from '../store/groupStore';
+import { DEFAULT_CATEGORIES, type Category } from '../utils/categories';
 
-interface Category {
-  name: string;
-  icon: string;
-}
-
-const DEFAULT_CATEGORIES: Category[] = [
-  { name: 'Konaklama', icon: '🛌' },
-  { name: 'Eğlence', icon: '🎤' },
-  { name: 'Market Alışverişi', icon: '🛒' },
-  { name: 'Sağlık', icon: '🦷' },
-  { name: 'Sigorta', icon: '🧯' },
-  { name: 'Kira ve Masraflar', icon: '🏠' },
-  { name: 'Restoranlar ve Barlar', icon: '🍔' },
-  { name: 'Shopping', icon: '🛍️' },
-  { name: 'Transport', icon: '🚕' },
-  { name: 'Fatura', icon: '🧾' },
-  { name: 'Balık', icon: '🐟' },
-  { name: 'Yufkacı', icon: '🥟' },
-  { name: 'Kasap', icon: '🥩' },
-  { name: 'İçme suyu', icon: '💧' },
-  { name: 'Halı Yıkama', icon: '🧼' },
-  { name: 'Diğer', icon: '🖐️' },
-];
 
 interface Expense {
   id: number;
@@ -287,6 +265,7 @@ export const ExpenseList: React.FC = () => {
                     onEdit={() => setEditingExpense(expense)}
                     onClick={(exp) => setSelectedExpense(exp)}
                     isOwner={currentUserId === expense.added_by}
+                    customCategories={customCategories}
                   />
                 ))}
               </AnimatePresence>
@@ -478,6 +457,7 @@ export const ExpenseList: React.FC = () => {
             onViewUserProfile={(uid) => {
               setViewingUserId(uid);
             }}
+            customCategories={customCategories}
           />
         )}
       </AnimatePresence>

@@ -29,7 +29,7 @@ from src.database import get_session
 from src.models import User
 from src.services.security import hash_password, protected, verify_password
 from src.services.schemas import BaseUserUpdateSchema
-from src.services.common import get_active_user, detect_mime
+from src.services.common import get_active_user, detect_mime, format_datetime
 
 logger = structlog.get_logger(__name__)
 
@@ -106,10 +106,12 @@ def _build_public_profile(user: User) -> dict:
         "id": user.id,
         "name": user.name,
         "surname": user.surname,
+        "mail": user.mail,
         "profile_photo": user.profile_photo,
         "age": user.age,
         "role": user.role.value,
-        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "invite_code": user.invite_code,
+        "created_at": format_datetime(user.created_at),
     }
 
 
@@ -524,11 +526,7 @@ async def search_users(request: Request) -> HTTPResponse:
         
         # Base query
         stmt = select(User).where(
-            or_(
-                User.name.ilike(f"%{query}%"),
-                User.surname.ilike(f"%{query}%"),
-                User.mail.ilike(f"%{query}%")
-            ),
+            User.invite_code == (query if query.startswith("#") else f"#{query}"),
             User.is_active.is_(True),
             User.deleted_at.is_(None)
         )

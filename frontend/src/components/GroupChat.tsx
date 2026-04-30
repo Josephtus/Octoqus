@@ -249,7 +249,7 @@ export const GroupChat: React.FC = () => {
                 )}
               </div>
               <span className={`text-[10px] text-slate-600 mt-1 ${isMe ? 'mr-1 text-right' : 'ml-1 text-left'}`}>
-                {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}
+                {msg.timestamp ? new Date(msg.timestamp + (msg.timestamp.includes('Z') || msg.timestamp.includes('+') ? '' : 'Z')).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) : ''}
               </span>
             </div>
           );

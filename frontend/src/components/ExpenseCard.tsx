@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { getCategoryIcon, type Category } from '../utils/categories';
 
 interface Expense {
   id: number;
@@ -20,12 +21,33 @@ interface ExpenseCardProps {
   onDelete: (expenseId: number) => void;
   onClick: (expense: Expense) => void;
   isOwner: boolean;
+  customCategories?: Category[];
 }
 
-export const ExpenseCard: React.FC<ExpenseCardProps> = ({ expense, onEdit, onDelete, onClick, isOwner }) => {
-  const formattedTime = expense.created_at 
-    ? new Date(expense.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) 
-    : '';
+export const ExpenseCard: React.FC<ExpenseCardProps> = ({ 
+  expense, 
+  onEdit, 
+  onDelete, 
+  onClick, 
+  isOwner, 
+  customCategories = [] 
+}) => {
+  // Tarih ve saat formatlama yardımcıları
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return '';
+    // YYYY-MM-DD formatını korumak için manuel parçalama (Timezone sapmalarını önler)
+    const [year, month, day] = dateStr.split('-');
+    return `${day}.${month}.${year}`;
+  };
+
+  const formatTime = (dateTimeStr: string) => {
+    if (!dateTimeStr) return '';
+    // Backend'den gelen ISO string'i (UTC varsayarak) yerel saate çevir
+    const date = new Date(dateTimeStr + (dateTimeStr.includes('Z') || dateTimeStr.includes('+') ? '' : 'Z'));
+    return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const formattedTime = formatTime(expense.created_at || '');
 
   return (
     <motion.div 
@@ -36,25 +58,7 @@ export const ExpenseCard: React.FC<ExpenseCardProps> = ({ expense, onEdit, onDel
     >
       {/* Sol Kısım: İkon ve Miktar */}
       <div className="flex-shrink-0 w-12 h-12 bg-slate-950 rounded-xl flex items-center justify-center border border-slate-800 group-hover:border-[#00f0ff]/20 transition-colors text-xl">
-        {expense.category ? (
-          <span>{expense.category === 'Market Alışverişi' ? '🛒' : 
-                 expense.category === 'Konaklama' ? '🛌' :
-                 expense.category === 'Eğlence' ? '🎤' :
-                 expense.category === 'Sağlık' ? '🦷' :
-                 expense.category === 'Sigorta' ? '🧯' :
-                 expense.category === 'Kira ve Masraflar' ? '🏠' :
-                 expense.category === 'Restoranlar ve Barlar' ? '🍔' :
-                 expense.category === 'Shopping' ? '🛍️' :
-                 expense.category === 'Transport' ? '🚕' :
-                 expense.category === 'Fatura' ? '🧾' :
-                 expense.category === 'Balık' ? '🐟' :
-                 expense.category === 'Yufkacı' ? '🥟' :
-                 expense.category === 'Kasap' ? '🥩' :
-                 expense.category === 'İçme suyu' ? '💧' :
-                 expense.category === 'Halı Yıkama' ? '🧼' : '📦'}</span>
-        ) : (
-          <span className="text-[#00f0ff] font-black text-xs">₺</span>
-        )}
+        <span>{getCategoryIcon(expense.category, customCategories)}</span>
       </div>
 
       {/* Orta Kısım: Detaylar */}
@@ -79,7 +83,7 @@ export const ExpenseCard: React.FC<ExpenseCardProps> = ({ expense, onEdit, onDel
         </div>
         
         <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500">
-          <span>{new Date(expense.date).toLocaleDateString('tr-TR')}</span>
+          <span>{formatDate(expense.date)}</span>
           <span>{formattedTime}</span>
           {expense.content && (
             <span className="truncate text-slate-400 font-medium">— {expense.content}</span>

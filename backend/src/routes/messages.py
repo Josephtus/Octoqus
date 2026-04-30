@@ -46,6 +46,7 @@ from websockets.exceptions import ConnectionClosedError
 from src.database import get_session
 from src.models import Group, GroupMember, Message
 from src.services.security import decode_access_token, protected
+from src.services.common import format_datetime
 
 logger = structlog.get_logger(__name__)
 
@@ -70,7 +71,7 @@ def _build_message(msg: Message) -> dict:
         "sender_name":  msg.sender.name if msg.sender else "Bilinmeyen",
         "sender_surname": msg.sender.surname if msg.sender else "Kullanıcı",
         "message_text": msg.message_text,
-        "timestamp":    msg.timestamp.isoformat() if msg.timestamp else None,
+        "timestamp":    format_datetime(msg.timestamp),
     }
 
 
@@ -237,7 +238,7 @@ async def send_message_rest(request: Request, group_id: int) -> HTTPResponse:
             "sender_name":  user_name,
             "sender_surname": user_surname,
             "message_text": message_text,
-            "timestamp":    now.isoformat(),
+            "timestamp":    format_datetime(now),
         }
 
         # Redis'e publish et (WebSocket üzerinden bağlı olanlar için)
@@ -458,7 +459,7 @@ async def chat_websocket(
                 "sender_name":  user_name,
                 "sender_surname": user_surname,
                 "message_text": message_text,
-                "timestamp":    now.isoformat(),
+                "timestamp":    format_datetime(now),
             }
 
             await _publish_message(request, channel, publish_payload)

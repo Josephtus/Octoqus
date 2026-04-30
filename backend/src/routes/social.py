@@ -1,26 +1,29 @@
 """
 src/routes/social.py
 ====================
-Sosyal Ağ ve Takip Sistemi Blueprint
+Arkadaşlık Sistemi Blueprint
 /api/social prefix'i ile çalışır.
 
 Endpoints:
-  POST   /api/social/follow/<target_user_id>   → Belirtilen kullanıcıyı takip et
-  DELETE /api/social/unfollow/<target_user_id> → Takipten çık
-  GET    /api/social/<user_id>/followers       → Kullanıcının takipçilerini listele
-  GET    /api/social/<user_id>/following       → Kullanıcının takip ettiklerini listele
+  POST   /api/social/friend-request/<target_user_id>   → Arkadaşlık isteği gönder
+  POST   /api/social/accept-request/<target_user_id>   → Arkadaşlık isteğini kabul et
+  POST   /api/social/decline-request/<target_user_id>  → Arkadaşlık isteğini reddet
+  DELETE /api/social/remove-friend/<target_user_id>    → Arkadaşı çıkar / İsteği iptal et
+  GET    /api/social/friends                           → Arkadaş listesi
+  GET    /api/social/friend-requests                    → Gelen arkadaşlık istekleri
 """
 
 import structlog
 from sanic import Blueprint, Request
 from sanic.exceptions import BadRequest, NotFound
 from sanic.response import HTTPResponse, json as sanic_json
-from sqlalchemy import delete, insert, select, func
+from sqlalchemy import delete, insert, select, func, or_, and_
 from sqlalchemy.exc import IntegrityError
 
 from src.database import get_session
-from src.models import User, follower_table
+from src.models import User, Friendship, FriendshipStatus
 from src.services.security import protected
+from src.services.common import get_active_user
 
 logger = structlog.get_logger(__name__)
 
@@ -31,12 +34,7 @@ social_bp = Blueprint("social", url_prefix="/api/social")
 # Helpers
 # =============================================================================
 
-from src.services.common import get_active_user
-
-# (Removed local _get_active_user, using src.services.common.get_active_user)
-
-
-def _build_public_user(user: User) -> dict:
+def _build_public_user(user: User, friendship_status: str = None) -> dict:
     return {
         "id":            user.id,
         "name":          user.name,
@@ -44,186 +42,244 @@ def _build_public_user(user: User) -> dict:
         "mail":          user.mail,
         "age":           user.age,
         "profile_photo": user.profile_photo,
+        "invite_code":   user.invite_code,
+        "friendship_status": friendship_status
     }
 
 
 # =============================================================================
-# ENDPOINT 1: POST /api/social/follow/<target_user_id> — Takip Et
+# ENDPOINT 1: POST /api/social/friend-request/<target_user_id>
 # =============================================================================
 
-@social_bp.post("/follow/<target_user_id:int>")
+@social_bp.post("/friend-request/<target_user_id:int>")
 @protected
-async def follow_user(request: Request, target_user_id: int) -> HTTPResponse:
-    """
-    Belirtilen kullanıcıyı takip eder.
-    Kendini takip etmeyi engeller. Zaten takip ediyorsa 400 döner.
-    """
-    follower_id: int = int(request.ctx.user["sub"])
+async def send_friend_request(request: Request, target_user_id: int) -> HTTPResponse:
+    """Arkadaşlık isteği gönderir."""
+    user_id: int = int(request.ctx.user["sub"])
 
-    if follower_id == target_user_id:
-        raise BadRequest("Kendinizi takip edemezsiniz.")
+    if user_id == target_user_id:
+        raise BadRequest("Kendinize arkadaşlık isteği gönderemezsiniz.")
 
     async with get_session() as session:
-        # Hedef kullanıcı var mı ve aktif mi?
+        # Hedef kullanıcı aktif mi?
         await get_active_user(session, target_user_id)
 
-        # Takip ilişkisini ekle
-        stmt = insert(follower_table).values(
-            follower_id=follower_id,
-            following_id=target_user_id
+        # Mevcut ilişki var mı?
+        stmt = select(Friendship).where(
+            or_(
+                and_(Friendship.user_id == user_id, Friendship.friend_id == target_user_id),
+                and_(Friendship.user_id == target_user_id, Friendship.friend_id == user_id)
+            )
         )
+        existing = await session.scalar(stmt)
 
-        try:
-            await session.execute(stmt)
-            logger.info("social.follow", follower=follower_id, following=target_user_id)
-        except IntegrityError:
-            # Composite primary key (follower_id, following_id) hatası = Zaten takip ediliyor
-            raise BadRequest("Bu kullanıcıyı zaten takip ediyorsunuz.")
+        if existing:
+            if existing.status == FriendshipStatus.ACCEPTED:
+                raise BadRequest("Zaten arkadaşsınız.")
+            elif existing.status == FriendshipStatus.PENDING:
+                if existing.user_id == user_id:
+                    raise BadRequest("Zaten bir istek gönderdiniz.")
+                else:
+                    raise BadRequest("Bu kullanıcı size zaten bir istek göndermiş. Kabul edebilirsiniz.")
 
-        return sanic_json(
-            {"message": f"Kullanıcı (id={target_user_id}) başarıyla takip edildi."},
-            status=201
+        # İstek oluştur
+        new_friendship = Friendship(
+            user_id=user_id,
+            friend_id=target_user_id,
+            status=FriendshipStatus.PENDING
         )
+        session.add(new_friendship)
+        
+        logger.info("social.friend_request.sent", user_id=user_id, target_id=target_user_id)
+        return sanic_json({"message": "Arkadaşlık isteği gönderildi."}, status=201)
 
 
 # =============================================================================
-# ENDPOINT 2: DELETE /api/social/unfollow/<target_user_id> — Takipten Çık
+# ENDPOINT 2: POST /api/social/accept-request/<target_user_id>
 # =============================================================================
 
-@social_bp.delete("/unfollow/<target_user_id:int>")
+@social_bp.post("/accept-request/<target_user_id:int>")
 @protected
-async def unfollow_user(request: Request, target_user_id: int) -> HTTPResponse:
-    """
-    Belirtilen kullanıcıyı takipten çıkar.
-    Takip edilmiyorsa 400 döner.
-    """
-    follower_id: int = int(request.ctx.user["sub"])
-
-    if follower_id == target_user_id:
-        raise BadRequest("Kendinizi takipten çıkamazsınız.")
+async def accept_friend_request(request: Request, target_user_id: int) -> HTTPResponse:
+    """Gelen arkadaşlık isteğini kabul eder."""
+    user_id: int = int(request.ctx.user["sub"])
 
     async with get_session() as session:
-        # Silme sorgusu
-        stmt = delete(follower_table).where(
-            follower_table.c.follower_id == follower_id,
-            follower_table.c.following_id == target_user_id
+        stmt = select(Friendship).where(
+            Friendship.user_id == target_user_id,
+            Friendship.friend_id == user_id,
+            Friendship.status == FriendshipStatus.PENDING
         )
+        friendship = await session.scalar(stmt)
+
+        if not friendship:
+            raise NotFound("Bekleyen arkadaşlık isteği bulunamadı.")
+
+        friendship.status = FriendshipStatus.ACCEPTED
         
+        logger.info("social.friend_request.accepted", user_id=user_id, target_id=target_user_id)
+        return sanic_json({"message": "Arkadaşlık isteği kabul edildi."})
+
+
+# =============================================================================
+# ENDPOINT 3: POST /api/social/decline-request/<target_user_id>
+# =============================================================================
+
+@social_bp.post("/decline-request/<target_user_id:int>")
+@protected
+async def decline_friend_request(request: Request, target_user_id: int) -> HTTPResponse:
+    """Gelen arkadaşlık isteğini reddeder."""
+    user_id: int = int(request.ctx.user["sub"])
+
+    async with get_session() as session:
+        stmt = delete(Friendship).where(
+            Friendship.user_id == target_user_id,
+            Friendship.friend_id == user_id,
+            Friendship.status == FriendshipStatus.PENDING
+        )
         result = await session.execute(stmt)
-        
+
         if result.rowcount == 0:
-            raise BadRequest("Bu kullanıcıyı zaten takip etmiyorsunuz.")
+            raise NotFound("Bekleyen arkadaşlık isteği bulunamadı.")
 
-        logger.info("social.unfollow", follower=follower_id, following=target_user_id)
-
-        return sanic_json(
-            {"message": f"Kullanıcı (id={target_user_id}) takipten çıkarıldı."},
-            status=200
-        )
+        logger.info("social.friend_request.declined", user_id=user_id, target_id=target_user_id)
+        return sanic_json({"message": "Arkadaşlık isteği reddedildi."})
 
 
 # =============================================================================
-# ENDPOINT 3: GET /api/social/<user_id>/followers — Takipçileri Listele
+# ENDPOINT 4: DELETE /api/social/remove-friend/<target_user_id>
 # =============================================================================
 
-@social_bp.get("/<user_id:int>/followers")
+@social_bp.delete("/remove-friend/<target_user_id:int>")
 @protected
-async def list_followers(request: Request, user_id: int) -> HTTPResponse:
-    """
-    Belirtilen kullanıcının takipçilerini (onu takip edenleri) listeler.
-    Sadece aktif ve silinmemiş kullanıcılar döner.
-    """
-    try:
-        page  = max(1, int(request.args.get("page", 1)))
-        limit = min(100, max(1, int(request.args.get("limit", 20))))
-    except (ValueError, TypeError):
-        page, limit = 1, 20
+async def remove_friend(request: Request, target_user_id: int) -> HTTPResponse:
+    """Arkadaşlıktan çıkarır veya gönderilen isteği iptal eder."""
+    user_id: int = int(request.ctx.user["sub"])
+
+    async with get_session() as session:
+        stmt = delete(Friendship).where(
+            or_(
+                and_(Friendship.user_id == user_id, Friendship.friend_id == target_user_id),
+                and_(Friendship.user_id == target_user_id, Friendship.friend_id == user_id)
+            )
+        )
+        result = await session.execute(stmt)
+
+        if result.rowcount == 0:
+            raise NotFound("Arkadaşlık ilişkisi bulunamadı.")
+
+        logger.info("social.friendship.removed", user_id=user_id, target_id=target_user_id)
+        return sanic_json({"message": "İşlem başarılı."})
+
+
+# =============================================================================
+# ENDPOINT 5: GET /api/social/friends
+# =============================================================================
+
+@social_bp.get("/friends")
+@protected
+async def list_friends(request: Request) -> HTTPResponse:
+    """Kullanıcının arkadaşlarını listeler (Sayfalamalı ve alfabetik)."""
+    user_id: int = int(request.ctx.user["sub"])
+    page = int(request.args.get("page", 1))
+    limit = int(request.args.get("limit", 6))
     offset = (page - 1) * limit
 
     async with get_session() as session:
-        await get_active_user(session, user_id)
-
-        # Sorgu: follower_table ile User tablosunu joinleyip "follower_id" leri çeker
-        stmt = (
-            select(User)
-            .join(follower_table, User.id == follower_table.c.follower_id)
-            .where(
-                follower_table.c.following_id == user_id,
-                User.is_active.is_(True),
-                User.deleted_at.is_(None)
+        from sqlalchemy import func
+        # Base query
+        stmt_base = select(User).join(
+            Friendship,
+            or_(
+                and_(Friendship.user_id == user_id, Friendship.friend_id == User.id),
+                and_(Friendship.friend_id == user_id, Friendship.user_id == User.id)
             )
-            .order_by(follower_table.c.created_at.desc())
-            .offset(offset)
-            .limit(limit)
+        ).where(
+            Friendship.status == FriendshipStatus.ACCEPTED,
+            User.is_active.is_(True),
+            User.deleted_at.is_(None)
         )
+
         # Count total
-        count_stmt = select(func.count()).select_from(stmt.subquery())
+        count_stmt = select(func.count()).select_from(stmt_base.subquery())
         total_count = await session.scalar(count_stmt) or 0
 
-        # Execute
-        followers = list(await session.scalars(stmt))
+        # Paged & Sorted query
+        stmt = stmt_base.order_by(User.name.asc(), User.surname.asc()).limit(limit).offset(offset)
+        friends = list(await session.scalars(stmt))
 
-        return sanic_json(
-            {
-                "user_id": user_id,
-                "page":    page,
-                "limit":   limit,
-                "total_count": total_count,
-                "data":    [_build_public_user(u) for u in followers],
-            },
-            status=200
-        )
+        return sanic_json({
+            "data": [_build_public_user(u, "ACCEPTED") for u in friends],
+            "pagination": {
+                "total": total_count,
+                "page": page,
+                "limit": limit,
+                "total_pages": (total_count + limit - 1) // limit
+            }
+        })
 
 
 # =============================================================================
-# ENDPOINT 4: GET /api/social/<user_id>/following — Takip Edilenleri Listele
+# ENDPOINT 6: GET /api/social/friend-requests
 # =============================================================================
 
-@social_bp.get("/<user_id:int>/following")
+@social_bp.get("/friend-requests")
 @protected
-async def list_following(request: Request, user_id: int) -> HTTPResponse:
-    """
-    Belirtilen kullanıcının takip ettiklerini listeler.
-    Sadece aktif ve silinmemiş kullanıcılar döner.
-    """
-    try:
-        page  = max(1, int(request.args.get("page", 1)))
-        limit = min(100, max(1, int(request.args.get("limit", 20))))
-    except (ValueError, TypeError):
-        page, limit = 1, 20
+async def list_friend_requests(request: Request) -> HTTPResponse:
+    """Kullanıcıya gelen bekleyen arkadaşlık isteklerini listeler (Sayfalamalı ve alfabetik)."""
+    user_id: int = int(request.ctx.user["sub"])
+    page = int(request.args.get("page", 1))
+    limit = int(request.args.get("limit", 6))
     offset = (page - 1) * limit
 
     async with get_session() as session:
-        await get_active_user(session, user_id)
-
-        # Sorgu: follower_table ile User tablosunu joinleyip "following_id" leri çeker
-        stmt = (
-            select(User)
-            .join(follower_table, User.id == follower_table.c.following_id)
-            .where(
-                follower_table.c.follower_id == user_id,
-                User.is_active.is_(True),
-                User.deleted_at.is_(None)
-            )
-            .order_by(follower_table.c.created_at.desc())
-            .offset(offset)
-            .limit(limit)
+        from sqlalchemy import func
+        # Base query
+        stmt_base = select(User).join(
+            Friendship,
+            and_(Friendship.user_id == User.id, Friendship.friend_id == user_id)
+        ).where(
+            Friendship.status == FriendshipStatus.PENDING,
+            User.is_active.is_(True),
+            User.deleted_at.is_(None)
         )
+
         # Count total
-        count_stmt = select(func.count()).select_from(stmt.subquery())
+        count_stmt = select(func.count()).select_from(stmt_base.subquery())
         total_count = await session.scalar(count_stmt) or 0
 
-        # Execute
-        following = list(await session.scalars(stmt))
+        # Paged & Sorted query
+        stmt = stmt_base.order_by(User.name.asc(), User.surname.asc()).limit(limit).offset(offset)
+        requests = list(await session.scalars(stmt))
 
-        return sanic_json(
-            {
-                "user_id": user_id,
-                "page":    page,
-                "limit":   limit,
-                "total_count": total_count,
-                "data":    [_build_public_user(u) for u in following],
-            },
-            status=200
+        return sanic_json({
+            "data": [_build_public_user(u, "PENDING") for u in requests],
+            "pagination": {
+                "total": total_count,
+                "page": page,
+                "limit": limit,
+                "total_pages": (total_count + limit - 1) // limit
+            }
+        })
+
+@social_bp.get("/status/<target_user_id:int>")
+@protected
+async def get_friendship_status(request: Request, target_user_id: int) -> HTTPResponse:
+    """İki kullanıcı arasındaki arkadaşlık durumunu döner."""
+    user_id: int = int(request.ctx.user["sub"])
+
+    async with get_session() as session:
+        stmt = select(Friendship).where(
+            or_(
+                and_(Friendship.user_id == user_id, Friendship.friend_id == target_user_id),
+                and_(Friendship.user_id == target_user_id, Friendship.friend_id == user_id)
+            )
         )
-
+        f = await session.scalar(stmt)
+        
+        if not f:
+            return sanic_json({"status": None})
+        
+        # Eğer pending ise kimin gönderdiği önemli
+        res = {"status": f.status.value, "sender_id": f.user_id}
+        return sanic_json(res)

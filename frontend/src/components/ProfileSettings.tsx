@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
+import { DatePicker } from './common/DatePicker';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { apiFetch, getImageUrl } from '../utils/api';
 import { profileSchema, type ProfileFormData, resetPasswordSchema, type ResetPasswordFormData } from '../utils/validations';
-import { User, Camera, Save, BadgeCheck, Trash2, Key, CheckCircle2, AlertCircle, Users, ChevronRight, Settings } from 'lucide-react';
+import { User, Camera, Save, BadgeCheck, Trash2, Key, CheckCircle2, AlertCircle, Users, ChevronRight, Settings, X, Mail } from 'lucide-react';
 import { Pagination } from './common/Pagination';
 
 interface ProfileSettingsProps {
@@ -15,12 +16,13 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'settings' | 'followers' | 'following'>('settings');
+  const [activeTab, setActiveTab] = useState<'settings' | 'friends' | 'requests'>('settings');
   const [socialData, setSocialData] = useState<any[]>([]);
   const [socialLoading, setSocialLoading] = useState(false);
   const [socialPage, setSocialPage] = useState(1);
   const [socialTotalCount, setSocialTotalCount] = useState(0);
   const [selectedProfile, setSelectedProfile] = useState<any>(null);
+  const [confirmModal, setConfirmModal] = useState<{show: boolean, userId: number | null, name: string}>({ show: false, userId: null, name: '' });
   const socialLimit = 6;
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -29,6 +31,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
     register: registerProfile,
     handleSubmit: handleSubmitProfile,
     setValue: setProfileValue,
+    control: profileControl,
     formState: { errors: profileErrors },
   } = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),
@@ -65,14 +68,17 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
     }
   };
 
-  const fetchSocialList = async (tab: 'followers' | 'following', pageNum: number = 1) => {
+  const fetchSocialList = async (tab: 'friends' | 'requests', pageNum: number = 1) => {
     if (!user) return;
     setSocialLoading(true);
     try {
-      const res = await apiFetch(`/social/${user.id}/${tab}?page=${pageNum}&limit=${socialLimit}`);
+      const endpoint = tab === 'friends' 
+        ? `/social/friends?page=${pageNum}&limit=${socialLimit}` 
+        : `/social/friend-requests?page=${pageNum}&limit=${socialLimit}`;
+      const res = await apiFetch(endpoint);
       const data = await res.json();
       setSocialData(data.data || []);
-      setSocialTotalCount(data.total_count || 0);
+      setSocialTotalCount(data.pagination?.total || data.data?.length || 0);
     } catch (err) {
       console.error(`${tab} listesi yüklenemedi:`, err);
     } finally {
@@ -183,13 +189,29 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
     }
   };
 
-  const handleUnfollow = async (targetId: number) => {
-    if (!window.confirm("Takipten çıkmak istediğinize emin misiniz?")) return;
+  const handleFriendAction = async (targetId: number, action: 'request' | 'accept' | 'decline' | 'remove') => {
+    if (action === 'remove' && !confirmModal.show) {
+      const friend = socialData.find(f => f.id === targetId);
+      setConfirmModal({ show: true, userId: targetId, name: friend ? `${friend.name} ${friend.surname}` : 'Bu kişi' });
+      return;
+    }
+
     try {
-      await apiFetch(`/social/unfollow/${targetId}`, { method: 'DELETE' });
-      setSocialData(prev => prev.filter(u => u.id !== targetId));
-    } catch (err) {
-      alert("İşlem başarısız.");
+      let endpoint = '';
+      if (action === 'request') endpoint = `/social/friend-request/${targetId}`;
+      else if (action === 'accept') endpoint = `/social/accept-request/${targetId}`;
+      else if (action === 'decline') endpoint = `/social/decline-request/${targetId}`;
+      else if (action === 'remove') endpoint = `/social/remove-friend/${targetId}`;
+
+      const method = action === 'remove' ? 'DELETE' : 'POST';
+      const res = await apiFetch(endpoint, { method });
+      if (!res.ok) throw new Error("İşlem başarısız.");
+      
+      setConfirmModal({ show: false, userId: null, name: '' });
+      fetchSocialList(activeTab, socialPage);
+      if (selectedProfile) setSelectedProfile(null);
+    } catch (err: any) {
+      alert(err.message);
     }
   };
 
@@ -239,6 +261,9 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                 <span className="text-[10px] font-black uppercase tracking-widest">Doğrulanmış</span>
               </div>
             </div>
+            {user?.role !== 'ADMIN' && (
+              <p className="text-slate-400 font-medium italic mb-1">{user?.invite_code}</p>
+            )}
             <p className="text-slate-400 font-medium mb-1">{user?.mail}</p>
             <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mb-6">Kayıt Tarihi: {new Date(user?.created_at).toLocaleDateString('tr-TR')}</p>
             
@@ -253,20 +278,20 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                 <Settings size={14} /> Ayarlar
               </button>
               <button 
-                onClick={() => setActiveTab('following')}
+                onClick={() => setActiveTab('friends')}
                 className={`flex items-center gap-2 px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                  activeTab === 'following' ? 'bg-[#00f0ff] text-slate-950 shadow-lg shadow-[#00f0ff]/20' : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
+                  activeTab === 'friends' ? 'bg-[#00f0ff] text-slate-950 shadow-lg shadow-[#00f0ff]/20' : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
                 }`}
               >
-                <Users size={14} /> Takip Edilenler
+                <Users size={14} /> Arkadaşlar
               </button>
               <button 
-                onClick={() => setActiveTab('followers')}
+                onClick={() => setActiveTab('requests')}
                 className={`flex items-center gap-2 px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                  activeTab === 'followers' ? 'bg-[#b026ff] text-white shadow-lg shadow-[#b026ff]/20' : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
+                  activeTab === 'requests' ? 'bg-[#b026ff] text-white shadow-lg shadow-[#b026ff]/20' : 'bg-white/5 text-slate-400 hover:text-white border border-white/5'
                 }`}
               >
-                <User size={14} /> Takipçiler
+                <User size={14} /> Arkadaşlık İstekleri
               </button>
             </div>
           </div>
@@ -325,15 +350,19 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                     {profileErrors.phone_number && <p className="text-[10px] text-red-400 ml-2 font-bold">{profileErrors.phone_number.message}</p>}
                   </div>
                   <div className="space-y-3">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] ml-2">Doğum Tarihi</label>
-                    <input 
-                      type="date" 
-                      {...registerProfile('birthday')}
-                      className={`w-full bg-slate-950/50 border transition-all rounded-2xl py-4 px-6 text-white focus:outline-none font-bold [color-scheme:dark] ${
-                        profileErrors.birthday ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#00f0ff]/50'
-                      }`}
+                    <Controller
+                      control={profileControl}
+                      name="birthday"
+                      render={({ field: { onChange, value } }) => (
+                        <DatePicker
+                          label="Doğum Tarihi"
+                          value={value}
+                          onChange={onChange}
+                          error={profileErrors.birthday?.message}
+                          showToday={false}
+                        />
+                      )}
                     />
-                    {profileErrors.birthday && <p className="text-[10px] text-red-400 ml-2 font-bold">{profileErrors.birthday.message}</p>}
                   </div>
                 </div>
 
@@ -427,7 +456,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                 </div>
                 <div>
                   <h3 className="text-xl font-black text-white tracking-tight">
-                    {activeTab === 'following' ? 'Takip Edilenler' : 'Takipçiler'}
+                    {activeTab === 'friends' ? 'Arkadaşlar' : 'Arkadaşlık İstekleri'}
                   </h3>
                   <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Toplam {socialData.length} kullanıcı</p>
                 </div>
@@ -446,28 +475,43 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                     initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.05 }}
                     className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 transition-all group"
                   >
-                    <div className="flex items-center gap-4 cursor-pointer" onClick={() => setSelectedProfile(item)}>
-                      <div className="w-12 h-12 rounded-xl bg-slate-800 overflow-hidden border border-white/10">
+                    <div className="flex items-center gap-4 cursor-pointer min-w-0" onClick={() => setSelectedProfile(item)}>
+                      <div className="w-12 h-12 rounded-xl bg-slate-800 overflow-hidden border border-white/10 shrink-0">
                         {item.profile_photo ? (
                           <img src={getImageUrl(item.profile_photo) || ''} alt={item.name} className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-lg">👤</div>
                         )}
                       </div>
-                      <div>
-                        <h4 className="text-sm font-black text-white tracking-tight">{item.name} {item.surname}</h4>
-                        <p className="text-slate-500 text-[9px] font-bold uppercase tracking-widest">{item.mail}</p>
+                      <div className="min-w-0 overflow-hidden">
+                        <h4 className="text-sm font-black text-white tracking-tight truncate">{item.name} {item.surname}</h4>
+                        <p className="text-slate-500 text-[9px] font-bold uppercase tracking-widest truncate">{item.mail}</p>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {activeTab === 'following' && (
+                      {activeTab === 'friends' ? (
                         <button 
-                          onClick={() => handleUnfollow(item.id)}
+                          onClick={() => handleFriendAction(item.id, 'remove')}
                           className="px-4 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all"
                         >
-                          Takipten Çık
+                          Arkadaştan Çıkar
                         </button>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => handleFriendAction(item.id, 'accept')}
+                            className="px-4 py-2 bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/20 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-[#00f0ff] hover:text-slate-950 transition-all"
+                          >
+                            Onayla
+                          </button>
+                          <button 
+                            onClick={() => handleFriendAction(item.id, 'decline')}
+                            className="px-4 py-2 bg-white/5 text-white border border-white/10 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-white/10 transition-all"
+                          >
+                            Reddet
+                          </button>
+                        </div>
                       )}
                       <button 
                         onClick={() => setSelectedProfile(item)}
@@ -516,11 +560,11 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               className="relative w-full max-w-lg bg-slate-900 border border-white/10 rounded-[40px] shadow-2xl overflow-hidden p-10 pt-16"
             >
-               <button 
+              <button 
                 onClick={() => setSelectedProfile(null)}
                 className="absolute top-6 right-6 p-2 bg-white/5 hover:bg-white/10 rounded-xl transition-all text-slate-400 hover:text-white z-10"
               >
-                <Trash2 size={20} className="rotate-45" />
+                <X size={20} />
               </button>
 
               <div className="flex flex-col items-center text-center">
@@ -531,15 +575,51 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({ onUpdate }) =>
                     <div className="w-full h-full flex items-center justify-center text-4xl">👤</div>
                   )}
                 </div>
-                <h3 className="text-3xl font-black text-white tracking-tighter mb-2">
+                <h3 className="text-3xl font-black text-white tracking-tighter mb-6">
                   {selectedProfile.name} {selectedProfile.surname}
                 </h3>
-                <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-10">{selectedProfile.mail}</p>
+                
+                <div className="bg-white/5 border border-white/10 px-6 py-3 rounded-full flex items-center gap-3">
+                  <Mail size={16} className="text-[#00f0ff]" />
+                  <span className="text-slate-300 font-black text-[10px] uppercase tracking-[0.1em]">{selectedProfile.mail}</span>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Confirmation Modal */}
+      <AnimatePresence>
+        {confirmModal.show && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setConfirmModal({ show: false, userId: null, name: '' })}
+              className="absolute inset-0 bg-slate-950/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-sm bg-slate-900 border border-white/10 p-8 rounded-[32px] shadow-2xl text-center"
+            >
+              <div className="w-20 h-20 bg-red-500/10 text-red-500 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                <Trash2 size={40} />
+              </div>
+              <h3 className="text-2xl font-black text-white mb-3 tracking-tight">Emin misiniz?</h3>
+              <p className="text-slate-400 text-sm mb-8">
+                <span className="text-white font-bold">{confirmModal.name}</span> isimli kullanıcıyı arkadaş listenizden çıkarmak istediğinize emin misiniz?
+              </p>
+              <div className="grid grid-cols-2 gap-4">
                 <button 
-                  onClick={() => setSelectedProfile(null)}
-                  className="w-full py-5 bg-white text-slate-950 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-[#00f0ff] transition-all"
+                  onClick={() => setConfirmModal({ show: false, userId: null, name: '' })}
+                  className="py-4 bg-white/5 text-white border border-white/10 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-white/10 transition-all"
                 >
-                  Kapat
+                  VAZGEÇ
+                </button>
+                <button 
+                  onClick={() => handleFriendAction(confirmModal.userId!, 'remove')}
+                  className="py-4 bg-red-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-red-600 transition-all shadow-xl shadow-red-500/20"
+                >
+                  EVET, ÇIKAR
                 </button>
               </div>
             </motion.div>

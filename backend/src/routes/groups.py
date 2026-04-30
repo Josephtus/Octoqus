@@ -23,6 +23,7 @@ Endpoints:
 import structlog
 import string
 import secrets
+import json
 from pydantic import BaseModel, ValidationError, field_validator
 from sanic import Blueprint, Request
 from sanic.exceptions import BadRequest, Forbidden, NotFound
@@ -33,6 +34,7 @@ from sqlalchemy.orm import selectinload
 from src.database import get_session
 from src.models import Group, GroupMember, GroupMemberRole, User, GroupBan, Expense
 from src.services.security import protected, rate_limit
+from src.services.common import format_datetime
 
 logger = structlog.get_logger(__name__)
 
@@ -160,7 +162,7 @@ def _build_group_response(group: Group) -> dict:
         "name": group.name,
         "content": group.content,
         "is_approved": group.is_approved,
-        "created_at": group.created_at.isoformat() if group.created_at else None,
+        "created_at": format_datetime(group.created_at),
         "custom_categories": group.custom_categories,
         "invite_code": group.invite_code,
     }
@@ -174,7 +176,7 @@ def _build_member_response(member: GroupMember) -> dict:
         "role": member.role.value,
         "is_approved": member.is_approved,
         "nickname": member.nickname,
-        "joined_at": member.joined_at.isoformat() if member.joined_at else None,
+        "joined_at": format_datetime(member.joined_at),
     }
 
 
@@ -222,7 +224,7 @@ async def _get_membership(session, group_id: int, user_id: int) -> GroupMember |
 
 @groups_bp.post("/")
 @protected
-@rate_limit(limit=3, window=3600, key_prefix="group_create")  # Saatte en fazla 3 grup
+@rate_limit(limit=20, window=3600, key_prefix="group_create")  # Saatte en fazla 20 grup
 async def create_group(request: Request) -> HTTPResponse:
     """
     Yeni grup oluşturur.
@@ -366,6 +368,8 @@ async def list_groups(request: Request) -> HTTPResponse:
             g_dict["role"] = membership.role.value
             g_dict["is_approved"] = membership.is_approved
             g_dict["nickname"] = membership.nickname
+            g_dict["is_starred"] = membership.is_starred
+            g_dict["last_accessed_at"] = format_datetime(membership.last_accessed_at)
             data_list.append(g_dict)
 
         return sanic_json(
@@ -375,6 +379,38 @@ async def list_groups(request: Request) -> HTTPResponse:
             },
             status=200,
         )
+
+
+@groups_bp.post("/<group_id:int>/star")
+@protected
+async def toggle_star_group(request: Request, group_id: int) -> HTTPResponse:
+    """Grubu yıldızlar veya yıldızı kaldırır."""
+    user_id: int = int(request.ctx.user["sub"])
+    async with get_session() as session:
+        membership = await _get_membership(session, group_id, user_id)
+        if not membership or not membership.is_approved:
+            raise Forbidden("Bu grup için yıldızlama yapamazsınız.")
+        
+        membership.is_starred = not membership.is_starred
+        await session.commit()
+        
+        return sanic_json({
+            "message": "Yıldız durumu güncellendi.",
+            "is_starred": membership.is_starred
+        })
+
+
+@groups_bp.post("/<group_id:int>/access")
+@protected
+async def update_group_access(request: Request, group_id: int) -> HTTPResponse:
+    """Grup son erişim zamanını günceller."""
+    user_id: int = int(request.ctx.user["sub"])
+    async with get_session() as session:
+        membership = await _get_membership(session, group_id, user_id)
+        if membership:
+            membership.last_accessed_at = func.now()
+            await session.commit()
+        return sanic_json({"message": "Erişim zamanı güncellendi."})
 
 
 
@@ -777,7 +813,15 @@ async def update_group(request: Request, group_id: int) -> HTTPResponse:
 
     async with get_session() as session:
         group = await _get_approved_group(session, group_id)
-        await _get_leader_membership(session, group_id, requester_id)
+        
+        # Sadece isim veya açıklama güncelleniyorsa Lider yetkisi ara
+        if data.name is not None or data.content is not None:
+            await _get_leader_membership(session, group_id, requester_id)
+        else:
+            # Sadece özel kategoriler güncelleniyorsa, onaylı üye olmak yeterli
+            membership = await _get_membership(session, group_id, requester_id)
+            if not membership or not membership.is_approved:
+                raise Forbidden("Bu işlemi yapmak için grupta onaylı üye olmalısınız.")
 
         updated_fields = {}
 
@@ -788,6 +832,10 @@ async def update_group(request: Request, group_id: int) -> HTTPResponse:
         if data.content is not None:
             group.content = data.content
             updated_fields["content"] = data.content
+
+        if data.custom_categories is not None:
+            group.custom_categories = data.custom_categories
+            updated_fields["custom_categories"] = data.custom_categories
 
         if not updated_fields:
             return sanic_json({"message": "Değişiklik yapılmadı."}, status=200)
@@ -806,6 +854,70 @@ async def update_group(request: Request, group_id: int) -> HTTPResponse:
             },
             status=200
         )
+
+
+# =============================================================================
+# ENDPOINT 7.5: DELETE /api/groups/<group_id>/categories — Özel Kategori Sil
+# =============================================================================
+
+@groups_bp.delete("/<group_id:int>/categories")
+@protected
+async def delete_custom_category(request: Request, group_id: int) -> HTTPResponse:
+    """
+    Özel bir kategoriyi siler ve bu kategoriye bağlı harcamaları 'Diğer' yapar.
+    """
+    requester_id: int = int(request.ctx.user["sub"])
+    category_name = request.args.get("name")
+
+    if not category_name:
+        raise BadRequest("Silinecek kategori adı ('name' query parametresi) gereklidir.")
+
+    async with get_session() as session:
+        group = await _get_approved_group(session, group_id)
+        
+        # Onaylı üyelik kontrolü
+        membership = await _get_membership(session, group_id, requester_id)
+        if not membership or not membership.is_approved:
+            raise Forbidden("Bu işlemi yapmak için grupta onaylı üye olmalısınız.")
+
+        # Mevcut kategorileri al
+        try:
+            custom_cats = json.loads(group.custom_categories) if group.custom_categories else []
+        except:
+            custom_cats = []
+
+        # Kategoriyi listeden çıkar
+        new_cats = [c for c in custom_cats if c["name"] != category_name]
+        
+        if len(new_cats) == len(custom_cats):
+            raise NotFound(f"'{category_name}' isimli özel kategori bulunamadı.")
+
+        # Grubu güncelle
+        group.custom_categories = json.dumps(new_cats) if new_cats else None
+        
+        # Bu kategoriye bağlı harcamaları 'Diğer' olarak güncelle
+        from sqlalchemy import update
+        from src.models import Expense
+        stmt = (
+            update(Expense)
+            .where(Expense.group_id == group_id, Expense.category == category_name)
+            .values(category="Diğer")
+        )
+        await session.execute(stmt)
+        
+        await session.commit()
+        
+        logger.info(
+            "group.category.deleted",
+            group_id=group_id,
+            user_id=requester_id,
+            category_name=category_name
+        )
+
+        return sanic_json({
+            "message": f"'{category_name}' kategorisi silindi ve ilgili harcamalar 'Diğer' kategorisine taşındı.",
+            "group": _build_group_response(group)
+        })
 
 
 # =============================================================================

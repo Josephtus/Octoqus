@@ -19,7 +19,8 @@ from src.models.models import (
     Report,
     ReportStatus,
     User,
-    follower_table,
+    Friendship,
+    FriendshipStatus,
     GroupBan,
     SettlementStatus,
 )
@@ -33,11 +34,11 @@ __all__ = [
     "Message",
     "Report",
     "AuditLog",
-    # Association Table
-    "follower_table",
+    "Friendship",
     # Enum'lar
     "GlobalRole",
     "GroupMemberRole",
     "ReportStatus",
     "SettlementStatus",
+    "FriendshipStatus",
 ]

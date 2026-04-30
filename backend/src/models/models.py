@@ -70,39 +70,20 @@ class SettlementStatus(str, enum.Enum):
     REJECTED  = "REJECTED"
 
 
+class FriendshipStatus(str, enum.Enum):
+    """Arkadaşlık isteği durumu."""
+    PENDING  = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
+
+
 # =============================================================================
 # FOLLOWER — Self-Referential Many-to-Many (Association Table)
 # =============================================================================
 # Not: Ek sütun olmadığı için (takip tarihi dışında) saf Table kullanıyoruz.
 # Takip tarihi eklemek gerekirse mapped class'a dönüştürülebilir.
 
-follower_table = Table(
-    "followers",
-    Base.metadata,
-    Column(
-        "follower_id",
-        Integer,
-        ForeignKey("users.id", ondelete="CASCADE"),
-        primary_key=True,
-        comment="Takip eden kullanıcı",
-    ),
-    Column(
-        "following_id",
-        Integer,
-        ForeignKey("users.id", ondelete="CASCADE"),
-        primary_key=True,
-        comment="Takip edilen kullanıcı",
-    ),
-    Column(
-        "created_at",
-        DateTime,
-        server_default=func.now(),
-        nullable=False,
-        comment="Takip ilişkisinin başlangıç tarihi",
-    ),
-    # Composite PK zaten unique garantisi veriyor; yine de açıkça belirt
-    UniqueConstraint("follower_id", "following_id", name="uq_follower_following"),
-)
+# (follower_table removed and replaced by Friendship model)
 
 
 # =============================================================================
@@ -138,6 +119,9 @@ class User(Base):
     )
     password: Mapped[str] = mapped_column(
         String(255), nullable=False, comment="Bcrypt hash — düz metin asla saklanmaz"
+    )
+    invite_code: Mapped[str] = mapped_column(
+        String(50), unique=True, nullable=False, comment="Kullanıcının davet kodu (#ID formatında)"
     )
 
     # Profil
@@ -178,20 +162,12 @@ class User(Base):
         "AuditLog", back_populates="admin", foreign_keys="AuditLog.admin_id"
     )
 
-    # Self-referential M2M: Takipçiler / Takip edilenler
-    following: Mapped[List["User"]] = relationship(
-        "User",
-        secondary=follower_table,
-        primaryjoin=lambda: User.id == follower_table.c.follower_id,
-        secondaryjoin=lambda: User.id == follower_table.c.following_id,
-        back_populates="followers",
+    # Arkadaşlık İlişkileri
+    friendships_sent: Mapped[List["Friendship"]] = relationship(
+        "Friendship", back_populates="user", foreign_keys="Friendship.user_id", cascade="all, delete-orphan"
     )
-    followers: Mapped[List["User"]] = relationship(
-        "User",
-        secondary=follower_table,
-        primaryjoin=lambda: User.id == follower_table.c.following_id,
-        secondaryjoin=lambda: User.id == follower_table.c.follower_id,
-        back_populates="following",
+    friendships_received: Mapped[List["Friendship"]] = relationship(
+        "Friendship", back_populates="friend", foreign_keys="Friendship.friend_id", cascade="all, delete-orphan"
     )
 
     @property
@@ -295,6 +271,19 @@ class GroupMember(Base):
         nullable=False,
         default=False,
         comment="Grup lideri onaylayana kadar False. True ise üye aktif kabul edilir.",
+    )
+    is_starred: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        comment="Kullanıcının bu grubu yıldızlayıp yıldızlamadığı"
+    )
+    last_accessed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime,
+        nullable=True,
+        server_default=func.now(),
+        onupdate=func.now(),
+        comment="Kullanıcının gruba en son ne zaman girdiği"
     )
 
     # ── İlişkiler ───────────────────────────────────────────────────────────
@@ -593,3 +582,45 @@ class GroupBan(Base):
 
     def __repr__(self) -> str:
         return f"<GroupBan id={self.id} group={self.group_id} user={self.user_id}>"
+
+
+# =============================================================================
+# MODEL 8: Friendship (Arkadaşlık)
+# =============================================================================
+
+class Friendship(Base):
+    """
+    Kullanıcılar arası arkadaşlık ilişkisi.
+    Status PENDING ise istektir, ACCEPTED ise arkadaştırlar.
+    """
+    __tablename__ = "friendships"
+    __table_args__ = (
+        UniqueConstraint("user_id", "friend_id", name="uq_friendship"),
+        Index("ix_friendships_user_id", "user_id"),
+        Index("ix_friendships_friend_id", "friend_id"),
+        Index("ix_friendships_status", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    friend_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    status: Mapped[FriendshipStatus] = mapped_column(
+        Enum(FriendshipStatus), nullable=False, default=FriendshipStatus.PENDING
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, onupdate=func.now()
+    )
+
+    # ── İlişkiler ───────────────────────────────────────────────────────────
+    user: Mapped["User"] = relationship("User", back_populates="friendships_sent", foreign_keys=[user_id])
+    friend: Mapped["User"] = relationship("User", back_populates="friendships_received", foreign_keys=[friend_id])
+
+    def __repr__(self) -> str:
+        return f"<Friendship id={self.id} user={self.user_id} friend={self.friend_id} status={self.status}>"

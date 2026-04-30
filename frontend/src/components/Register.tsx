@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { apiFetch } from '../utils/api';
 import { registerSchema, type RegisterFormData } from '../utils/validations';
-import { User, Mail, Lock, Phone, Calendar, ArrowLeft, ChevronRight, AlertCircle, Sparkles } from 'lucide-react';
+import { User, Mail, Lock, Phone, Calendar, ArrowLeft, ChevronRight, AlertCircle, Sparkles, Eye, EyeOff } from 'lucide-react';
+import { PhoneInput } from './common/PhoneInput';
+import { DatePicker } from './common/DatePicker';
 
 interface RegisterProps {
   onRegisterSuccess: () => void;
@@ -15,10 +17,12 @@ export const Register: React.FC<RegisterProps> = ({ onRegisterSuccess }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors },
   } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
@@ -136,44 +140,29 @@ export const Register: React.FC<RegisterProps> = ({ onRegisterSuccess }) => {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Doğum Tarihi</label>
-              <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none">
-                  <Calendar size={18} />
-                </div>
-                <input 
-                  type="date" 
-                  {...register('birthday')}
-                  className={`w-full pl-12 pr-6 py-4 rounded-2xl bg-slate-950/50 border transition-all ${
-                    errors.birthday ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#b026ff]/50'
-                  } text-white focus:outline-none focus:bg-slate-950 [color-scheme:dark]`}
+            <Controller
+              name="birthday"
+              control={control}
+              render={({ field }) => (
+                <DatePicker
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.birthday?.message}
                 />
-              </div>
-              {errors.birthday ? (
-                <p className="text-[10px] text-red-400 ml-1 font-bold">{errors.birthday.message}</p>
-              ) : (
-                <p className="text-[10px] text-slate-500 ml-1">Yaşınız bu tarihe göre otomatik hesaplanacaktır.</p>
               )}
-            </div>
+            />
 
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Telefon Numarası</label>
-              <div className="relative group">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-[#b026ff] transition-colors">
-                  <Phone size={18} />
-                </div>
-                <input 
-                  type="tel" 
-                  {...register('phone_number')}
-                  className={`w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-950/50 border transition-all ${
-                    errors.phone_number ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#b026ff]/50'
-                  } text-white placeholder:text-slate-600 focus:outline-none focus:bg-slate-950`}
-                  placeholder="+905551234567"
+            <Controller
+              name="phone_number"
+              control={control}
+              render={({ field }) => (
+                <PhoneInput
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.phone_number?.message}
                 />
-              </div>
-              {errors.phone_number && <p className="text-[10px] text-red-400 ml-1 font-bold">{errors.phone_number.message}</p>}
-            </div>
+              )}
+            />
 
             <div className="space-y-2">
               <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Email Adresi</label>
@@ -200,13 +189,30 @@ export const Register: React.FC<RegisterProps> = ({ onRegisterSuccess }) => {
                   <Lock size={18} />
                 </div>
                 <input 
-                  type="password" 
+                  type={showPassword ? "text" : "password"} 
                   {...register('password')}
-                  className={`w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-950/50 border transition-all ${
+                  className={`w-full pl-12 pr-12 py-4 rounded-2xl bg-slate-950/50 border transition-all ${
                     errors.password ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#b026ff]/50'
                   } text-white placeholder:text-slate-600 focus:outline-none focus:bg-slate-950`}
                   placeholder="Min. 8 karakter"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-[#b026ff] transition-colors p-1"
+                >
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.div
+                      key={showPassword ? 'eye' : 'eye-off'}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      transition={{ duration: 0.15 }}
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </motion.div>
+                  </AnimatePresence>
+                </button>
               </div>
               {errors.password && <p className="text-[10px] text-red-400 ml-1 font-bold">{errors.password.message}</p>}
             </div>

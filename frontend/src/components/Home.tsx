@@ -16,22 +16,35 @@ export const Home: React.FC<HomeProps> = ({ onSelectGroup }) => {
 
   const [summaryData, setSummaryData] = useState<any>({ total_spending: 0, summary: [] });
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [starredPage, setStarredPage] = useState(1);
+  const starredPerPage = 3;
 
   const fetchData = async () => {
     if (!user) return;
     setLoading(true);
     try {
       const [groupsRes, summaryRes] = await Promise.all([
-        apiFetch('/groups?sort_by=activity'),
-        apiFetch('/expenses/summary/me')
+        apiFetch('/groups'), // Removed sort_by=activity as we handle it on frontend
+        apiFetch('/expenses/summary/groups') // Changed endpoint
       ]);
       
       const groupsData = await groupsRes.json();
       const sumData = await summaryRes.json();
       
       const allGroups = groupsData.groups || [];
-      setMyGroups(allGroups);
-      setSummaryData(sumData || { total_spending: 0, summary: [] });
+      
+      // Sort by last_accessed_at (desc) for consistency
+      const sortedGroups = allGroups.sort((a: any, b: any) => {
+        const timeA = a.last_accessed_at ? new Date(a.last_accessed_at).getTime() : 0;
+        const timeB = b.last_accessed_at ? new Date(b.last_accessed_at).getTime() : 0;
+        return timeB - timeA;
+      });
+
+      setMyGroups(sortedGroups);
+      setSummaryData({
+        total_spending: sumData?.total_spending || 0,
+        summary: sumData?.summary || []
+      });
 
       const debtData: any = {};
       for (const group of allGroups) {
@@ -66,6 +79,18 @@ export const Home: React.FC<HomeProps> = ({ onSelectGroup }) => {
     }
   };
 
+  const handleToggleStar = async (groupId: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const res = await apiFetch(`/groups/${groupId}/star`, { method: 'POST' });
+      if (res.ok) {
+        setMyGroups(prev => prev.map(g => g.id === groupId ? { ...g, is_starred: !g.is_starred } : g));
+      }
+    } catch (err) {
+      console.error("Yıldızlama hatası:", err);
+    }
+  };
+
   useEffect(() => {
     fetchData();
   }, [user?.id]);
@@ -81,15 +106,15 @@ export const Home: React.FC<HomeProps> = ({ onSelectGroup }) => {
 
   const totalBalance = Object.values(debts).reduce((acc: number, val: any) => acc + val, 0) as number;
   const CATEGORY_COLORS = ['#6366f1', '#f59e0b', '#ef4444', '#0ea5e9', '#8b5cf6', '#ec4899', '#10b981', '#f43f5e'];
-  const DEFAULT_ICONS: Record<string, string> = {
-    'Konaklama': '🛌', 'Eğlence': '🎤', 'Market Alışverişi': '🛒', 'Sağlık': '🦷',
-    'Sigorta': '🧯', 'Kira ve Masraflar': '🏠', 'Restoranlar ve Barlar': '🍔',
-    'Shopping': '🛍️', 'Transport': '🚕', 'Fatura': '🧾', 'Balık': '🐟',
-    'Yufkacı': '🥟', 'Kasap': '🥩', 'İçme suyu': '💧', 'Halı Yıkama': '🧼', 'Diğer': '🖐️'
-  };
+
+  // Sorting and Filtering
+  const starredGroups = myGroups.filter(g => g.is_starred);
+
+  const totalStarredPages = Math.ceil(starredGroups.length / starredPerPage);
+  const currentStarredGroups = starredGroups.slice((starredPage - 1) * starredPerPage, starredPage * starredPerPage);
 
   return (
-    <div className="space-y-10 animate-fade-in">
+    <div className="space-y-12 animate-fade-in pb-20">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-7 bg-slate-900/40 backdrop-blur-3xl border border-white/10 rounded-[40px] p-8 md:p-12 relative overflow-hidden shadow-2xl flex flex-col justify-center min-h-[340px]">
           <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none">
@@ -208,8 +233,8 @@ export const Home: React.FC<HomeProps> = ({ onSelectGroup }) => {
                        >
                           <div className="flex items-center gap-3">
                             <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }} />
-                            <span className="text-lg shrink-0">{DEFAULT_ICONS[c.category] || '📦'}</span>
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate max-w-[80px]">{c.category}</span>
+                            <span className="text-lg shrink-0">🏢</span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate max-w-[80px]">{c.group_name}</span>
                           </div>
                           <div className="text-right">
                             <p className="text-[11px] font-black text-white leading-none">₺{c.total.toLocaleString('tr-TR')}</p>
@@ -224,67 +249,127 @@ export const Home: React.FC<HomeProps> = ({ onSelectGroup }) => {
         </div>
       </div>
 
+      {/* YILDIZLANAN GRUPLAR */}
       <div className="space-y-8">
         <div className="flex justify-between items-end px-2">
-          <div>
-            <h3 className="text-3xl font-black text-white tracking-tight">Son Kullanılan Gruplar</h3>
-            <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] mt-2">Harcama Aktivitesine Göre</p>
+          <div className="flex items-center gap-4">
+            <div>
+              <h3 className="text-3xl font-black text-white tracking-tight">Yıldızlanan Gruplar</h3>
+              <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] mt-2">Hızlı Erişim</p>
+            </div>
+            {totalStarredPages > 1 && (
+              <span className="text-[10px] font-black bg-white/5 text-slate-400 px-3 py-1 rounded-full border border-white/10 uppercase tracking-tighter">
+                SAYFA {starredPage}/{totalStarredPages}
+              </span>
+            )}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {myGroups.length > 0 ? (
-            myGroups.slice(0, 3).map((group) => {
-              const balance = debts[group.id] || 0;
-              return (
-                <motion.div 
-                  key={group.id}
-                  whileHover={{ y: -8, scale: 1.01 }}
-                  onClick={() => onSelectGroup(group.id, group.name, group.role, group.is_approved, group.nickname)}
-                  className="group bg-slate-900/60 backdrop-blur-md border border-white/5 rounded-[40px] p-8 hover:border-[#00f0ff]/30 transition-all cursor-pointer shadow-2xl relative overflow-hidden"
-                >
-                  <div className="flex justify-between items-start mb-8">
-                    <div className="w-14 h-14 rounded-2xl bg-slate-800 flex items-center justify-center text-2xl shadow-inner border border-white/5 group-hover:scale-110 transition-transform">
-                      🏢
+        <div className="space-y-12">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {currentStarredGroups.length > 0 ? (
+              currentStarredGroups.map((group) => {
+                const balance = debts[group.id] || 0;
+                return (
+                  <motion.div 
+                    key={group.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    whileHover={{ y: -8, scale: 1.01 }}
+                    onClick={() => onSelectGroup(group.id, group.name, group.role, group.is_approved, group.nickname)}
+                    className="group bg-slate-900/60 backdrop-blur-md border border-white/5 rounded-[40px] p-8 hover:border-[#b026ff]/30 transition-all cursor-pointer shadow-2xl relative overflow-hidden"
+                  >
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 blur-3xl -mr-12 -mt-12 pointer-events-none" />
+                    
+                    <div className="flex justify-between items-start mb-8">
+                      <div className="w-14 h-14 rounded-2xl bg-slate-800 flex items-center justify-center text-2xl shadow-inner border border-white/5 group-hover:scale-110 transition-transform">
+                        🏢
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={(e) => handleToggleStar(group.id, e)}
+                          className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/50 text-amber-500 flex items-center justify-center transition-all"
+                        >
+                          <span className="text-lg">★</span>
+                        </button>
+                        <div className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-[0.2em] ${group.role?.toUpperCase() === 'GROUP_LEADER' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 'bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/20'}`}>
+                          {group.role?.toUpperCase() === 'GROUP_LEADER' ? 'Lider' : 'Üye'}
+                        </div>
+                      </div>
                     </div>
-                    <div className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-[0.2em] ${group.role?.toUpperCase() === 'GROUP_LEADER' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 'bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/20'}`}>
-                      {group.role?.toUpperCase() === 'GROUP_LEADER' ? 'Lider' : 'Üye'}
-                    </div>
-                  </div>
 
-                  <div className="mb-2">
-                    <h4 className="text-xl font-black text-white group-hover:text-[#00f0ff] transition-colors truncate tracking-tight">
-                      {group.name}
-                    </h4>
-                    {group.nickname && (
-                      <span className="inline-block px-3 py-1 rounded-lg bg-white/5 border border-white/10 text-[9px] font-black text-slate-500 uppercase tracking-widest mt-2">
-                        🏷️ {group.nickname}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-slate-500 text-sm font-medium line-clamp-1 mb-8 leading-relaxed">{group.content || 'Açıklama belirtilmemiş.'}</p>
+                    <div className="mb-2">
+                      <h4 className="text-xl font-black text-white group-hover:text-[#b026ff] transition-colors truncate tracking-tight">
+                        {group.name}
+                      </h4>
+                      {group.nickname && (
+                        <span className="inline-block px-3 py-1 rounded-lg bg-white/5 border border-white/10 text-[9px] font-black text-slate-500 uppercase tracking-widest mt-2">
+                          🏷️ {group.nickname}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-slate-500 text-sm font-medium line-clamp-1 mb-8 leading-relaxed">{group.content || 'Açıklama belirtilmemiş.'}</p>
 
-                  <div className="flex items-center justify-between pt-6 border-t border-white/5">
-                    <div>
-                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Cari Durum</p>
-                      <p className={`text-lg font-black tracking-tighter ${balance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {balance >= 0 ? 'Alacak: ' : 'Borç: '}
-                        {Math.abs(balance).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
-                      </p>
+                    <div className="flex items-center justify-between pt-6 border-t border-white/5">
+                      <div>
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Cari Durum</p>
+                        <p className={`text-lg font-black tracking-tighter ${balance >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {balance >= 0 ? 'Alacak: ' : 'Borç: '}
+                          {Math.abs(balance).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺
+                        </p>
+                      </div>
+                      <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-slate-400 group-hover:bg-[#b026ff] group-hover:text-white transition-all shadow-lg">
+                        <ChevronRight size={20} />
+                      </div>
                     </div>
-                    <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-slate-400 group-hover:bg-[#00f0ff] group-hover:text-slate-950 transition-all shadow-lg">
-                      <ChevronRight size={20} />
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })
-          ) : (
-            <div className="col-span-full py-24 bg-slate-900/20 border border-dashed border-white/5 rounded-[40px] text-center">
-              <div className="w-20 h-20 bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner">
-                <LayoutGrid size={32} className="text-slate-600" />
+                  </motion.div>
+                );
+              })
+            ) : (
+              <div className="col-span-full py-20 bg-slate-900/20 border border-dashed border-white/10 rounded-[40px] text-center">
+                <div className="w-16 h-16 bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-6 opacity-20">
+                  <span className="text-2xl text-slate-400">★</span>
+                </div>
+                <p className="text-slate-500 font-black uppercase text-[10px] tracking-[0.3em]">Henüz yıldızlanmış bir grubunuz yok.</p>
+                <p className="text-slate-600 text-[9px] mt-2 font-bold italic">Hızlı erişim için gruplarınızı yıldızlayabilirsiniz.</p>
               </div>
-              <p className="text-slate-400 font-black uppercase text-xs tracking-[0.3em]">Henüz bir gruba üye değilsiniz.</p>
+            )}
+          </div>
+
+          {/* Pagination Controls */}
+          {totalStarredPages > 1 && (
+            <div className="flex justify-center items-center gap-4 mt-4">
+              <button
+                onClick={() => setStarredPage(prev => Math.max(prev - 1, 1))}
+                disabled={starredPage === 1}
+                className="w-12 h-12 rounded-2xl bg-slate-900/50 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white hover:border-[#b026ff]/50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              >
+                <ChevronRight size={20} className="rotate-180" />
+              </button>
+              
+              <div className="flex items-center gap-2 bg-slate-900/50 backdrop-blur-md border border-white/5 p-2 rounded-3xl">
+                {Array.from({ length: totalStarredPages }).map((_, i) => (
+                  <button
+                    key={i + 1}
+                    onClick={() => setStarredPage(i + 1)}
+                    className={`w-10 h-10 rounded-2xl font-black text-xs transition-all ${
+                      starredPage === i + 1 
+                        ? 'bg-[#b026ff] text-white shadow-[0_0_20px_rgba(176,38,255,0.3)] scale-110' 
+                        : 'text-slate-500 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setStarredPage(prev => Math.min(prev + 1, totalStarredPages))}
+                disabled={starredPage === totalStarredPages}
+                className="w-12 h-12 rounded-2xl bg-slate-900/50 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white hover:border-[#b026ff]/50 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              >
+                <ChevronRight size={20} />
+              </button>
             </div>
           )}
         </div>

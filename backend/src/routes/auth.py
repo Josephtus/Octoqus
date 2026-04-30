@@ -31,6 +31,7 @@ from src.services.security import (
     rate_limit,
     verify_password,
 )
+from src.services.common import generate_invite_code
 from src.services.email import send_password_reset_email
 
 logger = structlog.get_logger(__name__)
@@ -164,6 +165,7 @@ def _build_user_response(user: User) -> dict:
         "profile_photo": user.profile_photo,
         "age": user.calculated_age,
         "role": user.role.value,
+        "invite_code": user.invite_code,
         "is_active": user.is_active,
         "birthday": user.birthday.isoformat() if user.birthday else None,
         "created_at": user.created_at.isoformat() if user.created_at else None,
@@ -175,7 +177,7 @@ def _build_user_response(user: User) -> dict:
 # =============================================================================
 
 @auth_bp.post("/register")
-@rate_limit(limit=5, window=60, key_prefix="rl_auth")
+@rate_limit(limit=30, window=60, key_prefix="rl_auth")
 @openapi.summary("Yeni kullanıcı kaydı")
 @openapi.description("Sistemde yeni bir kullanıcı hesabı oluşturur. E-posta ve telefon numarası benzersiz olmalıdır.")
 @openapi.body({"application/json": RegisterRequest})
@@ -242,6 +244,7 @@ async def register(request: Request) -> HTTPResponse:
                 birthday=date.fromisoformat(data.birthday),
                 role=GlobalRole.USER,        # Yeni kayıtlar her zaman USER rolüyle başlar
                 is_active=True,
+                invite_code=generate_invite_code()
             )
 
             # Veritabanına ekle
@@ -274,7 +277,7 @@ async def register(request: Request) -> HTTPResponse:
 # =============================================================================
 
 @auth_bp.post("/login")
-@rate_limit(limit=10, window=60, key_prefix="rl_auth")
+@rate_limit(limit=100, window=60, key_prefix="rl_auth")
 @openapi.summary("Kullanıcı girişi")
 @openapi.description("E-posta ve şifre ile giriş yaparak JWT access token alır.")
 @openapi.body({"application/json": LoginRequest})

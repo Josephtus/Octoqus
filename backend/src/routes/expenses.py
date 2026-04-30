@@ -15,6 +15,7 @@ Endpoints:
 from datetime import date, datetime, timezone
 from pathlib import Path
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import aiofiles
 import structlog
@@ -36,11 +37,13 @@ import pandas as pd
 from fpdf import FPDF
 from io import BytesIO
 
+from src.services.image import optimize_image
+
 logger = structlog.get_logger(__name__)
 
 expenses_bp = Blueprint("expenses", url_prefix="/api/expenses")
 
-from src.services.common import detect_mime
+from src.services.common import detect_mime, format_datetime
 
 # ── Dosya yükleme sabitleri ────────────────────
 RECEIPT_UPLOAD_DIR = Path("./uploads/receipts")
@@ -138,7 +141,7 @@ def _build_expense(exp: Expense) -> dict:
         "id":            exp.id,
         "group_id":      exp.group_id,
         "added_by":      exp.added_by,
-        "added_by_name": exp.added_by_user.name if exp.added_by_user else "Bilinmiyor",
+        "added_by_name": f"{exp.added_by_user.name} {exp.added_by_user.surname}" if exp.added_by_user else "Bilinmiyor",
         "amount":        float(exp.amount),
         "content":       exp.content,
         "bill_photo":    exp.bill_photo,
@@ -146,8 +149,8 @@ def _build_expense(exp: Expense) -> dict:
         "is_settlement": exp.is_settlement,
         "status":        exp.settlement_status.value if exp.settlement_status else None,
         "category":      exp.category,
-        "created_at":    exp.created_at.isoformat() if exp.created_at else None,
-        "updated_at":    exp.updated_at.isoformat() if exp.updated_at else None,
+        "created_at":    format_datetime(exp.created_at),
+        "updated_at":    format_datetime(exp.updated_at),
     }
 
 
@@ -390,6 +393,45 @@ async def get_my_spending_summary(request: Request) -> HTTPResponse:
         })
 
 
+@expenses_bp.get("/summary/groups")
+@protected
+@openapi.summary("Gruplara göre harcama özeti")
+@openapi.description("Kullanıcının harcamalarını gruplara göre özetler.")
+async def get_group_spending_summary(request: Request) -> HTTPResponse:
+    user_id = int(request.ctx.user["sub"])
+    
+    async with get_session() as session:
+        # Harcamaları gruplara göre topla
+        stmt = (
+            select(Group.name, func.sum(Expense.amount).label("total"))
+            .join(Expense, Expense.group_id == Group.id)
+            .where(
+                Expense.added_by == user_id,
+                Expense.is_deleted.is_(False),
+                Expense.is_settlement.is_(False)
+            )
+            .group_by(Group.name)
+        )
+        result = await session.execute(stmt)
+        rows = result.all()
+        
+        summary_data = []
+        total_spending = 0.0
+        
+        for row in rows:
+            group_total = float(row.total or 0)
+            summary_data.append({
+                "group_name": row.name,
+                "total": group_total
+            })
+            total_spending += group_total
+            
+        return sanic_json({
+            "total_spending": total_spending,
+            "summary": sorted(summary_data, key=lambda x: x["total"], reverse=True)
+        })
+
+
 @expenses_bp.get("/<group_id:int>/export")
 @protected
 @openapi.summary("Harcamaları dışa aktar")
@@ -422,12 +464,17 @@ async def export_expenses(request: Request, group_id: int) -> HTTPResponse:
             raise BadRequest("Dışa aktarılacak harcama bulunamadı.")
             
         data = []
+        tr_tz = ZoneInfo("Europe/Istanbul")
         for e in expenses:
+            # UTC'den Türkiye saatine çevir
+            created_local = e.created_at.astimezone(tr_tz) if e.created_at else None
+            updated_local = e.updated_at.astimezone(tr_tz) if e.updated_at else None
+            
             data.append({
                 "Ekleyen": f"{e.added_by_user.name} {e.added_by_user.surname}" if e.added_by_user else "Bilinmiyor",
                 "Tarih": e.date.isoformat() if e.date else "-",
-                "Saat": e.created_at.strftime("%H:%M:%S") if e.created_at else "-",
-                "Son Güncelleme": e.updated_at.strftime("%Y-%m-%d %H:%M:%S") if e.updated_at else "-",
+                "Saat": created_local.strftime("%H:%M:%S") if created_local else "-",
+                "Son Güncelleme": updated_local.strftime("%Y-%m-%d %H:%M:%S") if updated_local else "-",
                 "Miktar (TL)": float(e.amount),
                 "Kategori": e.category or "-",
                 "Açıklama": e.content or "-",
@@ -671,13 +718,14 @@ async def update_expense(request: Request, group_id: int, expense_id: int) -> HT
         remove_photo = data_dict.get("remove_bill_photo")
         if remove_photo in (True, "true", "1"):
             if expense.bill_photo:
-                # Fiziksel dosyayı silmeyi deneyebiliriz (opsiyonel)
+                # Yerel dosyayı sil (Hard Delete)
                 try:
                     p = Path("." + expense.bill_photo)
                     if p.exists(): p.unlink()
                 except: pass
                 expense.bill_photo = None
                 updated_fields["bill_photo"] = None
+                
 
         # 2. Yeni Fotoğraf Yükle
         upload = request.files.get("bill_photo")
@@ -698,7 +746,7 @@ async def update_expense(request: Request, group_id: int, expense_id: int) -> HT
             if not mime or mime not in ALLOWED_MIME_TYPES:
                 raise BadRequest("Geçersiz dosya formatı.")
 
-            # Eski fotoğrafı sil
+            # Eski fotoğrafı sil (Hard Delete)
             if expense.bill_photo:
                 try:
                     p = Path("." + expense.bill_photo)

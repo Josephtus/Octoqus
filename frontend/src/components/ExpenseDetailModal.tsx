@@ -1,6 +1,7 @@
 import React from 'react';
 import { getImageUrl } from '../utils/api';
 import { motion } from 'framer-motion';
+import { getCategoryIcon, type Category } from '../utils/categories';
 
 interface Expense {
   id: number;
@@ -19,18 +20,29 @@ interface ExpenseDetailModalProps {
   expense: Expense;
   onClose: () => void;
   onViewUserProfile?: (userId: number) => void;
+  customCategories?: Category[];
 }
 
-export const ExpenseDetailModal: React.FC<ExpenseDetailModalProps> = ({ expense, onClose, onViewUserProfile }) => {
-  const formattedDate = new Date(expense.date).toLocaleDateString('tr-TR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric'
-  });
+export const ExpenseDetailModal: React.FC<ExpenseDetailModalProps> = ({ expense, onClose, onViewUserProfile, customCategories = [] }) => {
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return '';
+    const [year, month, day] = dateStr.split('-');
+    const date = new Date(Number(year), Number(month) - 1, Number(day));
+    return date.toLocaleDateString('tr-TR', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+  };
 
-  const formattedTime = expense.created_at
-    ? new Date(expense.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
-    : '';
+  const formatTime = (dateTimeStr?: string) => {
+    if (!dateTimeStr) return '';
+    const date = new Date(dateTimeStr + (dateTimeStr.includes('Z') || dateTimeStr.includes('+') ? '' : 'Z'));
+    return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const formattedDate = formatDate(expense.date);
+  const formattedTime = formatTime(expense.created_at);
 
   return (
     <div 
@@ -83,6 +95,7 @@ export const ExpenseDetailModal: React.FC<ExpenseDetailModalProps> = ({ expense,
               <div className="bg-slate-950/50 border border-slate-800/50 p-4 rounded-2xl col-span-2">
                 <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Kategori</label>
                 <div className="text-sm text-white font-bold flex items-center gap-2">
+                   <span>{getCategoryIcon(expense.category, customCategories)}</span>
                    {expense.category || 'Belirtilmemiş'}
                 </div>
               </div>
@@ -107,7 +120,7 @@ export const ExpenseDetailModal: React.FC<ExpenseDetailModalProps> = ({ expense,
               <div className="flex items-center gap-2 text-[9px] font-bold text-slate-600 uppercase tracking-tighter">
                 <span>ID: #{expense.id}</span>
                 <span>•</span>
-                <span>KAYIT: {new Date(expense.created_at || '').toLocaleString('tr-TR')}</span>
+                <span>KAYIT: {formattedDate} {formattedTime}</span>
               </div>
             </div>
           </div>

@@ -53,6 +53,13 @@ logger = structlog.get_logger(__name__)
 # Sanic Uygulama Oluşturma
 # ---------------------------------------------------------------------------
 app = Sanic("Octoqus")
+
+@app.on_response
+async def add_content_disposition(request, response):
+    """Resimlerin tarayıcıda indirilmeden açılmasını zorunlu kılar."""
+    if request.path.startswith("/uploads/"):
+        response.headers["Content-Disposition"] = "inline"
+
 # ---------------------------------------------------------------------------
 # Uygulama Yapılandırması (.env değerleri Sanic config'e aktarılır)
 # ---------------------------------------------------------------------------
@@ -293,16 +300,10 @@ async def health_check(request: Request) -> HTTPResponse:
     return sanic_json(checks, status=200)
 
 
-# =============================================================================
+# ---------------------------------------------------------------------------
 # STATIK DOSYA SUNUMU: /uploads → ./uploads
-# Fatura ve profil fotoğrafları yerel diskten sunulur
-# =============================================================================
-app.static(
-    "/uploads",         # URL prefix
-    "./uploads",        # Disk yolu (Dockerfile CMD'nin çalıştığı dizin)
-    name="uploads",
-    content_type=None,  # Otomatik content-type tespiti
-)
+# ---------------------------------------------------------------------------
+app.static("/uploads", "./uploads", name="uploads")
 
 
 # =============================================================================

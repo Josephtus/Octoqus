@@ -41,7 +41,7 @@ from src.models import (
     ReportStatus,
     User,
 )
-from src.services.common import get_active_user, detect_mime
+from src.services.common import get_active_user, detect_mime, format_datetime
 from src.routes.expenses import (
     ALLOWED_MIME_TYPES,
     EXTENSION_TO_MIME,
@@ -93,7 +93,7 @@ def _build_report_response(report: Report) -> dict:
         "aciklama": report.aciklama,
         "category": report.category,
         "status": report.status.value,
-        "created_at": report.created_at.isoformat() if report.created_at else None,
+        "created_at": format_datetime(report.created_at),
     }
     
     # Şikayet eden bilgisi
@@ -119,7 +119,7 @@ def _build_audit_log_response(log: AuditLog) -> dict:
         "admin_id": log.admin_id,
         "process_performed": log.process_performed,
         "content": log.content,
-        "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+        "timestamp": format_datetime(log.timestamp),
     }
 
 
@@ -227,7 +227,7 @@ async def list_users(request: Request) -> HTTPResponse:
                 "phone_number": u.phone_number,
                 "role": u.role.value,
                 "is_active": u.is_active,
-                "created_at": u.created_at.isoformat() if u.created_at else None,
+                "created_at": format_datetime(u.created_at),
                 "joined_groups": joined_groups,
                 "led_groups": led_groups
             })
@@ -428,7 +428,7 @@ async def list_groups(request: Request) -> HTTPResponse:
                 "name": group.name,
                 "content": group.content,
                 "is_approved": group.is_approved,
-                "created_at": group.created_at.isoformat() if group.created_at else None,
+                "created_at": format_datetime(group.created_at),
                 "member_count": member_count
             })
             
@@ -499,9 +499,9 @@ async def get_group_details(request: Request, group_id: int) -> HTTPResponse:
                 "id": m.id,
                 "sender_name": f"{u.name} {u.surname}",
                 "message_text": m.message_text,
-                "timestamp": m.timestamp.isoformat(),
+                "timestamp": format_datetime(m.timestamp),
                 "is_deleted": m.is_deleted,
-                "deleted_at": m.deleted_at.isoformat() if m.deleted_at else None
+                "deleted_at": format_datetime(m.deleted_at)
             })
 
         return sanic_json({
@@ -1455,3 +1455,95 @@ async def get_user_details(request: Request, user_id: int) -> HTTPResponse:
             "messages": messages,
             "memberships": memberships
         }, status=200)
+
+
+# =============================================================================
+# YENİ: Gruba Manuel Üye Ekleme / Çıkarma / Rol Değiştirme
+# =============================================================================
+
+@admin_bp.post("/users/<user_id:int>/groups/<group_id:int>")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def admin_add_to_group(request: Request, user_id: int, group_id: int) -> HTTPResponse:
+    admin_id = int(request.ctx.user["sub"])
+    
+    async with get_session() as session:
+        # Zaten üye mi?
+        stmt = select(GroupMember).where(GroupMember.user_id == user_id, GroupMember.group_id == group_id)
+        existing = await session.scalar(stmt)
+        if existing:
+            return sanic_json({"message": "Kullanıcı zaten bu grubun üyesi."}, status=400)
+            
+        new_member = GroupMember(
+            user_id=user_id,
+            group_id=group_id,
+            role=GroupMemberRole.USER,
+            is_approved=True # Admin eklediği için direkt onaylı
+        )
+        session.add(new_member)
+        await _create_audit_log(session, admin_id, "ADMIN_GROUP_ADD", {"user_id": user_id, "group_id": group_id})
+        return sanic_json({"message": "Kullanıcı gruba eklendi."}, status=200)
+
+@admin_bp.delete("/users/<user_id:int>/groups/<group_id:int>")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def admin_remove_from_group(request: Request, user_id: int, group_id: int) -> HTTPResponse:
+    admin_id = int(request.ctx.user["sub"])
+    
+    async with get_session() as session:
+        from sqlalchemy import delete
+        stmt = delete(GroupMember).where(GroupMember.user_id == user_id, GroupMember.group_id == group_id)
+        await session.execute(stmt)
+        await _create_audit_log(session, admin_id, "ADMIN_GROUP_REMOVE", {"user_id": user_id, "group_id": group_id})
+        return sanic_json({"message": "Kullanıcı gruptan çıkarıldı."}, status=200)
+
+@admin_bp.put("/users/<user_id:int>/groups/<group_id:int>/role")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def admin_change_group_role(request: Request, user_id: int, group_id: int) -> HTTPResponse:
+    admin_id = int(request.ctx.user["sub"])
+    data = request.json
+    new_role = data.get("role")
+    
+    if new_role not in [r.value for r in GroupMemberRole]:
+        raise BadRequest("Geçersiz rol.")
+
+    async with get_session() as session:
+        stmt = select(GroupMember).where(GroupMember.user_id == user_id, GroupMember.group_id == group_id)
+        member = await session.scalar(stmt)
+        if not member:
+            raise NotFound("Üyelik kaydı bulunamadı.")
+            
+        member.role = GroupMemberRole(new_role)
+        await _create_audit_log(session, admin_id, "ADMIN_GROUP_ROLE_CHANGE", {"user_id": user_id, "group_id": group_id, "new_role": new_role})
+        return sanic_json({"message": "Grup içi rol güncellendi."}, status=200)
+
+@admin_bp.post("/groups/<group_id:int>/transfer_leadership")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def admin_transfer_leadership(request: Request, group_id: int) -> HTTPResponse:
+    """Admin tarafından liderlik devri. Mevcut lider USER olur, hedef kullanıcı LEADER olur."""
+    admin_id = int(request.ctx.user["sub"])
+    data = request.json
+    target_user_id = data.get("target_user_id")
+    
+    async with get_session() as session:
+        # 1. Mevcut lideri bul
+        stmt_leader = select(GroupMember).where(GroupMember.group_id == group_id, GroupMember.role == GroupMemberRole.GROUP_LEADER)
+        current_leader = await session.scalar(stmt_leader)
+        
+        # 2. Hedef üyeyi bul
+        stmt_target = select(GroupMember).where(GroupMember.group_id == group_id, GroupMember.user_id == target_user_id)
+        target_member = await session.scalar(stmt_target)
+        
+        if not target_member:
+            raise NotFound("Hedef kullanıcı bu grubun üyesi değil.")
+            
+        if current_leader:
+            current_leader.role = GroupMemberRole.USER
+            
+        target_member.role = GroupMemberRole.GROUP_LEADER
+        target_member.is_approved = True # Lider ise onaylı olmalı
+        
+        await _create_audit_log(session, admin_id, "ADMIN_LEADER_TRANSFER", {"group_id": group_id, "new_leader": target_user_id})
+        return sanic_json({"message": "Liderlik başarıyla devredildi."}, status=200)

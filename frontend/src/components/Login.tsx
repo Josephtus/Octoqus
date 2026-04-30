@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { apiFetch } from '../utils/api';
 import { loginSchema, type LoginFormData } from '../utils/validations';
-import { Mail, Lock, ArrowLeft, ChevronRight, AlertCircle } from 'lucide-react';
+import { Mail, Lock, ArrowLeft, ChevronRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 interface LoginProps {
   onLoginSuccess: () => void;
@@ -15,6 +15,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const {
     register,
     handleSubmit,
@@ -134,13 +135,30 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                   <Lock size={18} />
                 </div>
                 <input 
-                  type="password" 
+                  type={showPassword ? "text" : "password"} 
                   {...register('password')}
-                  className={`w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-950/50 border transition-all ${
+                  className={`w-full pl-12 pr-12 py-4 rounded-2xl bg-slate-950/50 border transition-all ${
                     errors.password || serverError ? 'border-red-500/50 focus:border-red-500' : 'border-white/5 focus:border-[#00f0ff]/50'
                   } text-white placeholder:text-slate-600 focus:outline-none focus:bg-slate-950`}
                   placeholder="••••••••"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-[#00f0ff] transition-colors p-1"
+                >
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.div
+                      key={showPassword ? 'eye' : 'eye-off'}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      transition={{ duration: 0.15 }}
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </motion.div>
+                  </AnimatePresence>
+                </button>
               </div>
               {errors.password && (
                 <p className="text-[10px] text-red-400 ml-1 font-bold">{errors.password.message}</p>

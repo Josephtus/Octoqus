@@ -116,6 +116,14 @@ async def init_db() -> None:
             try: await conn.execute(text("ALTER TABLE groups ADD COLUMN custom_categories TEXT NULL"))
             except: pass
 
+        if not await column_exists("group_members", "is_starred"):
+            try: await conn.execute(text("ALTER TABLE group_members ADD COLUMN is_starred BOOLEAN NOT NULL DEFAULT FALSE"))
+            except: pass
+
+        if not await column_exists("group_members", "last_accessed_at"):
+            try: await conn.execute(text("ALTER TABLE group_members ADD COLUMN last_accessed_at DATETIME NULL"))
+            except: pass
+
 
 async def dispose_engine() -> None:
     """Sanic shutdown hook'unda engine bağlantı havuzunu kapat."""

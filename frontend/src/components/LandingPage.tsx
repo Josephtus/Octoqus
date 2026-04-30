@@ -31,6 +31,16 @@ export const LandingPage: React.FC = () => {
     },
   };
 
+  // Mobile optimization for blur filter
+  const mobileItemVariants = {
+    hidden: { y: 20, opacity: 0 },
+    visible: {
+      y: 0,
+      opacity: 1,
+      transition: { duration: 0.8, ease: "easeOut" },
+    },
+  };
+
   return (
     <div className="relative min-h-screen bg-slate-950 text-white selection:bg-[#b026ff]/30 overflow-x-hidden">
       {/* Header */}
@@ -47,8 +57,8 @@ export const LandingPage: React.FC = () => {
           
           <nav className="hidden md:flex items-center gap-8">
             <a href="#features" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Özellikler</a>
-            <a href="#" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Fiyatlandırma</a>
-            <a href="#" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Topluluk</a>
+            <a href="#how-it-works" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Nasıl Çalışır?</a>
+            <a href="#community" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Topluluk</a>
           </nav>
 
           <div className="flex items-center gap-4">
@@ -71,7 +81,7 @@ export const LandingPage: React.FC = () => {
       {/* Dynamic Background */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <motion.div 
-          className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-[#b026ff]/15 to-transparent blur-[120px]"
+          className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-[#b026ff]/15 to-transparent blur-[80px] md:blur-[120px] will-change-transform"
           animate={{
             x: [0, 50, 0],
             y: [0, 80, 0],
@@ -80,7 +90,7 @@ export const LandingPage: React.FC = () => {
           transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
         />
         <motion.div 
-          className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full bg-gradient-to-tl from-[#00f0ff]/10 to-transparent blur-[120px]"
+          className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full bg-gradient-to-tl from-[#00f0ff]/10 to-transparent blur-[80px] md:blur-[120px] will-change-transform"
           animate={{
             x: [0, -60, 0],
             y: [0, -40, 0],
@@ -102,7 +112,7 @@ export const LandingPage: React.FC = () => {
           animate="visible"
           className="max-w-6xl w-full text-center relative z-10"
         >
-          <motion.div variants={itemVariants} className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 mb-10 backdrop-blur-xl">
+          <motion.div variants={window.innerWidth < 768 ? mobileItemVariants : itemVariants} className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 mb-10 backdrop-blur-xl">
             <span className="flex h-2 w-2 relative">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#00f0ff] opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-[#00f0ff]"></span>
@@ -111,7 +121,7 @@ export const LandingPage: React.FC = () => {
           </motion.div>
 
           <motion.h1 
-            variants={itemVariants}
+            variants={window.innerWidth < 768 ? mobileItemVariants : itemVariants}
             className="text-6xl md:text-9xl font-black mb-8 tracking-tighter leading-[0.9]"
           >
             Harcamalarını <br />
@@ -122,14 +132,15 @@ export const LandingPage: React.FC = () => {
           </motion.h1>
 
           <motion.p 
-            variants={itemVariants}
+            variants={window.innerWidth < 768 ? mobileItemVariants : itemVariants}
             className="text-slate-400 text-lg md:text-2xl max-w-3xl mx-auto mb-14 leading-relaxed font-light"
           >
-            Karmaşayı düzene sokun. Octoqus ile bütçenizi yönetmek sadece bir takip değil, 
-            bir yaşam tarzı haline gelir. Profesyoneller için tasarlandı.
+            Arkadaş gruplarınızdaki borç-alacak karmaşasına son verin. 
+            Octoqus, harcamalarınızı optimize eder, makbuzlarınızı arşivler ve 
+            finansal ilişkilerinizi şeffaf bir sosyal ağa dönüştürür.
           </motion.p>
 
-          <motion.div variants={itemVariants} className="flex flex-col sm:flex-row items-center justify-center gap-8">
+          <motion.div variants={window.innerWidth < 768 ? mobileItemVariants : itemVariants} className="flex flex-col sm:flex-row items-center justify-center gap-8">
             <button
               onClick={() => navigate('/register')}
               className="group relative px-10 py-5 bg-white text-black font-black rounded-2xl overflow-hidden transition-all hover:scale-105 active:scale-95 hover:shadow-[0_0_40px_rgba(255,255,255,0.2)]"
@@ -140,7 +151,10 @@ export const LandingPage: React.FC = () => {
               </span>
             </button>
             
-            <button className="group px-8 py-5 text-white/70 font-bold hover:text-white transition-colors flex items-center gap-2">
+            <button 
+              onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
+              className="group px-8 py-5 text-white/70 font-bold hover:text-white transition-colors flex items-center gap-2"
+            >
               Nasıl Çalışır?
               <span className="w-10 h-[1px] bg-white/20 group-hover:w-16 group-hover:bg-[#00f0ff] transition-all duration-500" />
             </button>
@@ -156,9 +170,10 @@ export const LandingPage: React.FC = () => {
           >
             <div className="flex items-center gap-4 mb-4">
               <div className="p-2 bg-[#b026ff]/20 rounded-lg"><TrendingUp size={20} className="text-[#b026ff]" /></div>
-              <div className="text-sm font-bold">Aylık Tasarruf</div>
+              <div className="text-sm font-bold">Borç Dengesi</div>
             </div>
-            <div className="text-2xl font-black text-[#00f0ff]">+₺4,250.00</div>
+            <div className="text-2xl font-black text-[#00f0ff]">Optimize Edildi</div>
+            <div className="text-[10px] text-slate-500 mt-2 uppercase tracking-widest font-bold">Cash Flow Algorithm</div>
           </FloatingElement>
 
           <FloatingElement 
@@ -167,23 +182,15 @@ export const LandingPage: React.FC = () => {
             className="w-72 p-6 rounded-3xl bg-slate-900/40 border border-white/10 backdrop-blur-2xl"
           >
             <div className="flex justify-between items-center mb-4">
-              <div className="text-sm font-bold">Grup Harcaması</div>
-              <Bell size={16} className="text-slate-500" />
+              <div className="text-sm font-bold">Dijital Arşiv</div>
+              <CheckCircle2 size={16} className="text-[#00f0ff]" />
             </div>
-            <div className="space-y-3">
-              {[1, 2].map(i => (
-                <div key={i} className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-slate-700" />
-                  <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: i === 1 ? '70%' : '40%' }}
-                      transition={{ duration: 2, delay: 2 }}
-                      className="h-full bg-gradient-to-r from-[#b026ff] to-[#00f0ff]" 
-                    />
-                  </div>
-                </div>
-              ))}
+            <div className="flex items-center gap-3 p-3 bg-white/5 rounded-2xl border border-white/5">
+               <div className="w-10 h-10 bg-slate-800 rounded-xl overflow-hidden flex items-center justify-center text-[10px] text-slate-500">IMG</div>
+               <div className="flex-1">
+                  <div className="w-16 h-2 bg-slate-700 rounded-full mb-2" />
+                  <div className="w-10 h-1.5 bg-slate-800 rounded-full" />
+               </div>
             </div>
           </FloatingElement>
 
@@ -192,11 +199,14 @@ export const LandingPage: React.FC = () => {
             initialPos={{ bottom: '15%', left: '15%' }}
             className="w-56 p-6 rounded-3xl bg-slate-900/40 border border-white/10 backdrop-blur-2xl"
           >
-            <div className="flex items-center gap-3 mb-2">
-              <PieChart size={20} className="text-[#00f0ff]" />
-              <div className="text-xs font-bold text-slate-400">Kategoriler</div>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <div className="text-xs font-bold text-slate-400">Anlık Sohbet</div>
             </div>
-            <div className="text-xl font-bold italic">Market & Gıda</div>
+            <div className="space-y-2">
+               <div className="w-full h-2 bg-slate-800 rounded-full" />
+               <div className="w-2/3 h-2 bg-slate-700 rounded-full" />
+            </div>
           </FloatingElement>
         </div>
 
@@ -234,20 +244,20 @@ export const LandingPage: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
             <FeatureCard 
               icon={<Wallet className="text-[#b026ff]" size={40} />}
-              title="Akıllı Cüzdan"
-              description="Tüm hesaplarınızı tek bir noktadan yönetin. Harcamalarınızı yapay zeka ile otomatik kategorize edin."
+              title="Akıllı Borç Yönetimi"
+              description="Cash-Flow algoritmamızla gruplardaki borç transferlerini minimize edin. Kimin kime ödeyeceğini biz hesaplayalım."
               delay={0.1}
             />
             <FeatureCard 
               icon={<Users className="text-[#704dff]" size={40} />}
-              title="Kusursuz Bölüşüm"
-              description="Arkadaş gruplarınızla 'kim kime ne kadar borçlu?' derdine son verin. Saniyeler içinde settle edin."
+              title="Sosyal Finans Ağı"
+              description="Arkadaşlarınızı ekleyin, gruplar kurun ve harcamalarınızı anlık mesajlaşma ile tartışın. Finansal sosyallik burada başlar."
               delay={0.2}
             />
             <FeatureCard 
               icon={<BarChart3 className="text-[#00f0ff]" size={40} />}
-              title="Derin Analizler"
-              description="Sadece rakamları değil, hikayeyi görün. Harcama alışkanlıklarınızı profesyonel grafiklerle inceleyin."
+              title="Güvenli Arşivleme"
+              description="Faturalarınızı ve makbuzlarınızı yerel diskte (VDS) güvenle saklayın. Google Drive entegrasyonu ile 6 saatte bir yedekleyin."
               delay={0.3}
             />
           </div>
@@ -255,7 +265,7 @@ export const LandingPage: React.FC = () => {
       </section>
 
       {/* Premium CTA */}
-      <section className="relative py-40 px-4 overflow-hidden">
+      <section id="community" className="relative py-40 px-4 overflow-hidden">
         <div className="max-w-5xl mx-auto relative">
           <motion.div 
             whileInView={{ scale: [0.95, 1], opacity: [0, 1] }}
@@ -267,7 +277,7 @@ export const LandingPage: React.FC = () => {
               <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_0%,rgba(176,38,255,0.15),transparent)]" />
               
               <h2 className="text-4xl md:text-7xl font-black mb-8 leading-tight">
-                Finansal özgürlüğe <br />bir adım kaldı.
+                Finansal dürüstlük <br />sosyal bir ağdır.
               </h2>
               
               <button 
@@ -278,9 +288,9 @@ export const LandingPage: React.FC = () => {
               </button>
               
               <div className="mt-16 flex flex-wrap justify-center gap-10 opacity-60">
-                <FeatureItem text="Kredi Kartı Yok" />
-                <FeatureItem text="Sınırsız Veri" />
-                <FeatureItem text="Bulut Yedekleme" />
+                <FeatureItem text="Adil Paylaşım" />
+                <FeatureItem text="Anlık Bildirimler" />
+                <FeatureItem text="Güvenli Topluluk" />
               </div>
             </div>
           </motion.div>

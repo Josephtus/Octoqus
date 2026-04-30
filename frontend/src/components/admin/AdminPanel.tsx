@@ -3,13 +3,14 @@ import { AdminUsers } from './AdminUsers';
 import { AdminGroups } from './AdminGroups';
 import { AdminReports } from './AdminReports';
 import { AdminLogs } from './AdminLogs';
+import { AdminDashboard } from './AdminDashboard';
 
 import { motion, AnimatePresence } from 'framer-motion';
 
-type AdminTab = 'users' | 'groups' | 'reports' | 'logs';
+type AdminTab = 'dashboard' | 'users' | 'groups' | 'reports' | 'logs';
 
 export const AdminPanel: React.FC = () => {
-  const [adminTab, setAdminTab] = useState<AdminTab>('users');
+  const [adminTab, setAdminTab] = useState<AdminTab>('dashboard');
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col md:flex-row min-h-[800px]">
@@ -19,6 +20,7 @@ export const AdminPanel: React.FC = () => {
           ADMİN PANEL
         </h2>
         {[
+          { id: 'dashboard', label: 'Genel Durum', icon: '📊' },
           { id: 'users', label: 'Kullanıcılar', icon: '👤' },
           { id: 'groups', label: 'Grup Yönetimi', icon: '📁' },
           { id: 'reports', label: 'Şikayetler', icon: '⚠️' },
@@ -44,6 +46,7 @@ export const AdminPanel: React.FC = () => {
             transition={{ duration: 0.2 }}
             className="h-full"
           >
+            {adminTab === 'dashboard' && <AdminDashboard onTabChange={setAdminTab} />}
             {adminTab === 'users' && <AdminUsers />}
             {adminTab === 'groups' && <AdminGroups />}
             {adminTab === 'reports' && <AdminReports />}
