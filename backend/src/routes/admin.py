@@ -518,6 +518,7 @@ async def list_groups(request: Request) -> HTTPResponse:
                 "content": group.content,
                 "is_approved": group.is_approved,
                 "created_at": format_datetime(group.created_at),
+                "invite_code": group.invite_code,
                 "member_count": member_count
             })
             
@@ -721,8 +722,9 @@ async def list_reports(request: Request) -> HTTPResponse:
         page = max(1, int(request.args.get("page", 1)))
         limit = min(100, max(1, int(request.args.get("limit", 20))))
         category_filter = request.args.get("category")
+        status_filter = request.args.get("status")
     except (ValueError, TypeError):
-        page, limit, category_filter = 1, 20, None
+        page, limit, category_filter, status_filter = 1, 20, None, None
 
     offset = (page - 1) * limit
 
@@ -733,6 +735,8 @@ async def list_reports(request: Request) -> HTTPResponse:
         count_stmt = select(func.count(Report.id))
         if category_filter:
             count_stmt = count_stmt.where(Report.category == category_filter)
+        if status_filter:
+            count_stmt = count_stmt.where(Report.status == status_filter)
         total_count = await session.scalar(count_stmt) or 0
 
         # PENDING olanları öncelikli getir, ardından creation date desc
@@ -747,6 +751,8 @@ async def list_reports(request: Request) -> HTTPResponse:
         
         if category_filter:
             stmt = stmt.where(Report.category == category_filter)
+        if status_filter:
+            stmt = stmt.where(Report.status == status_filter)
 
         stmt = stmt.order_by(
             case(
