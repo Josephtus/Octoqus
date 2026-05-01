@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { apiFetch } from '../utils/api';
 import { LayoutGrid, CreditCard, ArrowUpRight, ArrowDownLeft, Users, ChevronRight } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
+import { getCategoryIcon } from '../utils/categories';
 
 interface HomeProps {
   onSelectGroup: (id: number, name: string, role: string, isApproved: boolean, nickname?: string | null) => void;
@@ -24,8 +25,8 @@ export const Home: React.FC<HomeProps> = ({ onSelectGroup }) => {
     setLoading(true);
     try {
       const [groupsRes, summaryRes] = await Promise.all([
-        apiFetch('/groups'), // Removed sort_by=activity as we handle it on frontend
-        apiFetch('/expenses/summary/groups') // Changed endpoint
+        apiFetch('/groups'),
+        apiFetch('/expenses/summary/me')
       ]);
       
       const groupsData = await groupsRes.json();
@@ -233,8 +234,8 @@ export const Home: React.FC<HomeProps> = ({ onSelectGroup }) => {
                        >
                           <div className="flex items-center gap-3">
                             <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }} />
-                            <span className="text-lg shrink-0">🏢</span>
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate max-w-[80px]">{c.group_name}</span>
+                            <span className="text-lg shrink-0">{getCategoryIcon(c.category)}</span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate max-w-[80px]">{c.category}</span>
                           </div>
                           <div className="text-right">
                             <p className="text-[11px] font-black text-white leading-none">₺{c.total.toLocaleString('tr-TR')}</p>

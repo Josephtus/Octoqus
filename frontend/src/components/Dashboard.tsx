@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { apiFetch, getImageUrl } from '../utils/api';
@@ -57,6 +57,18 @@ export const Dashboard: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isNicknameModalOpen, setIsNicknameModalOpen] = useState(false);
   const [newNickname, setNewNickname] = useState('');
+  const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
+  const exportDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(event.target as Node)) {
+        setIsExportDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Admin Redirection
   useEffect(() => {
@@ -401,21 +413,22 @@ export const Dashboard: React.FC = () => {
                             <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Grup içi tüm finansal hareketler</p>
                           </div>
                           <div className="flex items-center gap-3">
-                            <div className="relative group/export">
+                            <div className="relative" ref={exportDropdownRef}>
                               <button 
-                                className="px-6 py-4 bg-white/5 border border-white/10 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-2"
+                                onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
+                                className={`px-6 py-4 border rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 ${isExportDropdownOpen ? 'bg-white text-slate-950 border-white' : 'bg-white/5 border-white/10 text-white hover:bg-white/10'}`}
                               >
                                 <FileDown size={14} /> Dışa Aktar
                               </button>
-                              <div className="absolute top-full right-0 mt-2 w-44 bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl opacity-0 scale-95 invisible group-hover/export:opacity-100 group-hover/export:scale-100 group-hover/export:visible transition-all z-[60] overflow-hidden p-1.5">
+                              <div className={`absolute top-full right-0 mt-2 w-44 bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl transition-all z-[60] overflow-hidden p-1.5 ${isExportDropdownOpen ? 'opacity-100 scale-100 visible' : 'opacity-0 scale-95 invisible'}`}>
                                 <button 
-                                  onClick={() => handleExport('excel')}
+                                  onClick={() => { handleExport('excel'); setIsExportDropdownOpen(false); }}
                                   className="w-full px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-400 hover:bg-[#00f0ff]/10 hover:text-[#00f0ff] rounded-xl transition-all flex items-center gap-3"
                                 >
                                   <span className="text-sm">📊</span> EXCEL (.XLSX)
                                 </button>
                                 <button 
-                                  onClick={() => handleExport('pdf')}
+                                  onClick={() => { handleExport('pdf'); setIsExportDropdownOpen(false); }}
                                   className="w-full px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-slate-400 hover:bg-red-500/10 hover:text-red-400 rounded-xl transition-all flex items-center gap-3"
                                 >
                                   <span className="text-sm">📄</span> PDF BELGESİ
@@ -461,7 +474,7 @@ export const Dashboard: React.FC = () => {
             />
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-              className="relative w-full max-w-md bg-slate-900 border border-white/10 rounded-[40px] p-8 shadow-2xl"
+              className="relative w-full max-w-[600px] bg-slate-900 border border-white/10 rounded-[40px] p-8 md:p-10 shadow-2xl"
             >
               <ExpenseForm onSuccess={() => { setIsModalOpen(false); triggerRefresh(); }} onCancel={() => setIsModalOpen(false)} />
             </motion.div>

@@ -6,6 +6,7 @@ Admin Paneli ve Denetim İzi (Audit Log) Blueprint
 
 Endpoints:
   PUT    /api/admin/users/<user_id>/status              → Kullanıcıyı engelle/kaldır
+  DELETE /api/admin/users/<user_id>                     → Kullanıcıyı sistemden tamamen sil
   PUT    /api/admin/groups/<group_id>/approve           → Grubu onayla
   DELETE /api/admin/messages/<message_id>               → Mesajı soft-delete yap
   DELETE /api/admin/expenses/<group_id>/<expense_id>    → Harcamayı soft-delete yap
@@ -188,11 +189,44 @@ async def list_users(request: Request) -> HTTPResponse:
             )
 
         # Dinamik Sıralama
-        order_attr = getattr(User, sort_field, User.id)
-        if sort_order == "asc":
-            stmt = stmt.order_by(asc(order_attr))
+        if sort_field == "membership_count":
+            # Üyelik sayısı (Lider olmayan)
+            subq = (
+                select(func.count(GroupMember.id))
+                .where(GroupMember.user_id == User.id, GroupMember.role != GroupMemberRole.USER.GROUP_LEADER) # USER role for non-leader
+                .scalar_subquery()
+            )
+            # Actually, looking at the code, it seems the frontend treats 'joined_groups' as role != GROUP_LEADER
+            # and 'led_groups' as role == GROUP_LEADER.
+            # Let's fix the logic to match exactly.
+            from src.models import GroupMemberRole
+            subq_joined = (
+                select(func.count(GroupMember.id))
+                .where(GroupMember.user_id == User.id, GroupMember.role != GroupMemberRole.GROUP_LEADER)
+                .scalar_subquery()
+            )
+            if sort_order == "asc":
+                stmt = stmt.order_by(asc(subq_joined))
+            else:
+                stmt = stmt.order_by(desc(subq_joined))
+        elif sort_field == "leadership_count":
+            # Liderlik sayısı
+            from src.models import GroupMemberRole
+            subq_led = (
+                select(func.count(GroupMember.id))
+                .where(GroupMember.user_id == User.id, GroupMember.role == GroupMemberRole.GROUP_LEADER)
+                .scalar_subquery()
+            )
+            if sort_order == "asc":
+                stmt = stmt.order_by(asc(subq_led))
+            else:
+                stmt = stmt.order_by(desc(subq_led))
         else:
-            stmt = stmt.order_by(desc(order_attr))
+            order_attr = getattr(User, sort_field, User.id)
+            if sort_order == "asc":
+                stmt = stmt.order_by(asc(order_attr))
+            else:
+                stmt = stmt.order_by(desc(order_attr))
 
         stmt = stmt.offset(offset).limit(limit)
         users = list(await session.scalars(stmt))
@@ -227,6 +261,7 @@ async def list_users(request: Request) -> HTTPResponse:
                 "phone_number": u.phone_number,
                 "role": u.role.value,
                 "is_active": u.is_active,
+                "invite_code": u.invite_code,
                 "created_at": format_datetime(u.created_at),
                 "joined_groups": joined_groups,
                 "led_groups": led_groups
@@ -288,6 +323,60 @@ async def toggle_user_status(request: Request, user_id: int) -> HTTPResponse:
                 "message": f"Kullanıcı durumu güncellendi: {new_status}",
                 "user_id": user_id,
                 "is_active": user.is_active,
+            },
+            status=200,
+        )
+
+
+# =============================================================================
+# ENDPOINT 1.6: DELETE /api/admin/users/<user_id> — Kullanıcıyı Sil
+# =============================================================================
+
+@admin_bp.delete("/users/<user_id:int>")
+@protected
+@role_required(GlobalRole.ADMIN)
+async def delete_user(request: Request, user_id: int) -> HTTPResponse:
+    """
+    Kullanıcıyı sistemden kalıcı olarak siler. 
+    İlişkili tüm veriler (üyelikler, arkadaşlıklar vb.) cascade ile silinir.
+    Harcamalar ve mesajlar 'anonymous' (null) olarak kalır veya silinir.
+    """
+    admin_id: int = int(request.ctx.user["sub"])
+
+    if admin_id == user_id:
+        raise BadRequest("Kendi hesabınızı silemezsiniz.")
+
+    async with get_session() as session:
+        stmt = select(User).where(User.id == user_id)
+        user = await session.scalar(stmt)
+
+        if not user:
+            raise NotFound(f"Kullanıcı bulunamadı (id={user_id}).")
+
+        user_name = f"{user.name} {user.surname}"
+
+        # Hard Delete
+        await session.delete(user)
+
+        # Audit Log
+        await _create_audit_log(
+            session,
+            admin_id=admin_id,
+            process="USER_HARD_DELETE",
+            content={"user_id": user_id, "user_name": user_name},
+        )
+
+        logger.warning(
+            "admin.user_deleted",
+            admin_id=admin_id,
+            target_user=user_id,
+            user_name=user_name
+        )
+
+        return sanic_json(
+            {
+                "message": f"Kullanıcı '{user_name}' (ID: {user_id}) başarıyla silindi.",
+                "user_id": user_id
             },
             status=200,
         )
@@ -429,6 +518,7 @@ async def list_groups(request: Request) -> HTTPResponse:
                 "content": group.content,
                 "is_approved": group.is_approved,
                 "created_at": format_datetime(group.created_at),
+                "invite_code": group.invite_code,
                 "member_count": member_count
             })
             
@@ -632,8 +722,9 @@ async def list_reports(request: Request) -> HTTPResponse:
         page = max(1, int(request.args.get("page", 1)))
         limit = min(100, max(1, int(request.args.get("limit", 20))))
         category_filter = request.args.get("category")
+        status_filter = request.args.get("status")
     except (ValueError, TypeError):
-        page, limit, category_filter = 1, 20, None
+        page, limit, category_filter, status_filter = 1, 20, None, None
 
     offset = (page - 1) * limit
 
@@ -644,6 +735,8 @@ async def list_reports(request: Request) -> HTTPResponse:
         count_stmt = select(func.count(Report.id))
         if category_filter:
             count_stmt = count_stmt.where(Report.category == category_filter)
+        if status_filter:
+            count_stmt = count_stmt.where(Report.status == status_filter)
         total_count = await session.scalar(count_stmt) or 0
 
         # PENDING olanları öncelikli getir, ardından creation date desc
@@ -658,6 +751,8 @@ async def list_reports(request: Request) -> HTTPResponse:
         
         if category_filter:
             stmt = stmt.where(Report.category == category_filter)
+        if status_filter:
+            stmt = stmt.where(Report.status == status_filter)
 
         stmt = stmt.order_by(
             case(

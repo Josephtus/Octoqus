@@ -24,8 +24,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onTabChange }) =
       const [usersRes, groupsRes, pendingRes, reportsRes, logsRes] = await Promise.all([
         apiFetch('/admin/users?limit=1'),
         apiFetch('/admin/groups?limit=1'),
-        apiFetch('/admin/groups?q=&page=1&limit=100'), // We filter pending on frontend or check if API has it
-        apiFetch('/admin/reports?limit=1'),
+        apiFetch('/admin/groups?q=&page=1&limit=100'),
+        apiFetch('/admin/reports?status=PENDING&limit=1'),
         apiFetch('/admin/audit-logs?limit=5')
       ]);
 

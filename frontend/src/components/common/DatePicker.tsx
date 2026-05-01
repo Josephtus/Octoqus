@@ -5,6 +5,7 @@ import { ChevronDown, Calendar } from 'lucide-react';
 interface DatePickerProps {
   value: string; // YYYY-MM-DD
   onChange: (value: string) => void;
+  label?: string;
   error?: string;
   className?: string;
 }
@@ -14,7 +15,7 @@ const MONTHS = [
   'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
 ];
 
-export const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, error, className }) => {
+export const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, label = "Tarih", error, className }) => {
   const [day, setDay] = useState<string>('');
   const [month, setMonth] = useState<string>('');
   const [year, setYear] = useState<string>('');
@@ -60,13 +61,13 @@ export const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, error, 
 
   const Dropdown = ({ 
     type, 
-    label, 
+    dropdownLabel, 
     currentValue, 
     options, 
     onSelect, 
     displayFunc = (v: any) => v 
   }: any) => (
-    <div className="relative flex-1">
+    <div className="relative flex-1 min-w-0">
       <button
         type="button"
         onClick={() => setActiveDropdown(activeDropdown === type ? null : type)}
@@ -74,10 +75,10 @@ export const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, error, 
           activeDropdown === type ? 'border-[#b026ff] shadow-[0_0_15px_rgba(176,38,255,0.2)]' : 'border-white/5 hover:border-white/10'
         }`}
       >
-        <span className={currentValue ? 'text-white font-bold' : 'text-slate-600'}>
-          {currentValue ? displayFunc(currentValue) : label}
+        <span className={`text-xs sm:text-sm truncate ${currentValue ? 'text-white font-bold' : 'text-slate-600'}`}>
+          {currentValue ? displayFunc(currentValue) : dropdownLabel}
         </span>
-        <ChevronDown size={14} className={`text-slate-500 transition-transform ${activeDropdown === type ? 'rotate-180' : ''}`} />
+        <ChevronDown size={14} className={`text-slate-500 shrink-0 transition-transform ${activeDropdown === type ? 'rotate-180' : ''}`} />
       </button>
 
       <AnimatePresence>
@@ -96,7 +97,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, error, 
                   onSelect(String(opt));
                   setActiveDropdown(null);
                 }}
-                className="w-full p-3 text-left text-sm font-medium text-slate-300 hover:bg-[#b026ff]/10 hover:text-white transition-all border-b border-white/5 last:border-0"
+                className="w-full p-3 text-left text-xs sm:text-sm font-medium text-slate-300 hover:bg-[#b026ff]/10 hover:text-white transition-all border-b border-white/5 last:border-0"
               >
                 {displayFunc(opt)}
               </button>
@@ -110,20 +111,20 @@ export const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, error, 
   return (
     <div className={`space-y-2 ${className}`} ref={containerRef}>
       <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-        <Calendar size={12} /> Doğum Tarihi
+        <Calendar size={12} /> {label}
       </label>
       
       <div className="flex gap-2">
         <Dropdown 
           type="day" 
-          label="Gün" 
+          dropdownLabel="Gün" 
           currentValue={day} 
           options={days} 
           onSelect={setDay} 
         />
         <Dropdown 
           type="month" 
-          label="Ay" 
+          dropdownLabel="Ay" 
           currentValue={month} 
           options={Array.from({ length: 12 }, (_, i) => i + 1)} 
           onSelect={setMonth}
@@ -131,7 +132,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({ value, onChange, error, 
         />
         <Dropdown 
           type="year" 
-          label="Yıl" 
+          dropdownLabel="Yıl" 
           currentValue={year} 
           options={years} 
           onSelect={setYear} 

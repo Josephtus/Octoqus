@@ -145,6 +145,7 @@ export const Register: React.FC<RegisterProps> = ({ onRegisterSuccess }) => {
               control={control}
               render={({ field }) => (
                 <DatePicker
+                  label="Doğum Tarihi"
                   value={field.value}
                   onChange={field.onChange}
                   error={errors.birthday?.message}
