@@ -1,0 +1,7 @@
+# Bu dizin Alembic tarafından üretilen migration dosyalarını içerir.
+# Klasörün Git'te izlenmesi için bu dosya eklenmiştir.
+# İlk migration oluşturmak için:
+#
+#   cd backend/
+#   alembic revision --autogenerate -m "initial_schema"
+#   alembic upgrade head

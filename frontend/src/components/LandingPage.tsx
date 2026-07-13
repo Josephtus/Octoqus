@@ -1,0 +1,387 @@
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { motion, useScroll, useTransform } from 'framer-motion';
+import { Wallet, Users, BarChart3, ArrowRight, CheckCircle2, TrendingUp } from 'lucide-react';
+import { FloatingOctopus } from './FloatingOctopus';
+
+export const LandingPage: React.FC = () => {
+  const navigate = useNavigate();
+  const { scrollYProgress } = useScroll();
+  const heroOpacity = useTransform(scrollYProgress, [0, 0.3], [1, 0]);
+  const heroScale = useTransform(scrollYProgress, [0, 0.3], [1, 0.9]);
+  const heroY = useTransform(scrollYProgress, [0, 0.3], [0, -50]);
+
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.15,
+        delayChildren: 0.2,
+      },
+    },
+  };
+
+  const itemVariants: any = {
+    hidden: { y: 30, opacity: 0, filter: "blur(10px)" },
+    visible: {
+      y: 0,
+      opacity: 1,
+      filter: "blur(0px)",
+      transition: { duration: 1, ease: [0.16, 1, 0.3, 1] },
+    },
+  };
+
+  // Mobile optimization for blur filter
+  const mobileItemVariants: any = {
+    hidden: { y: 20, opacity: 0 },
+    visible: {
+      y: 0,
+      opacity: 1,
+      transition: { duration: 0.8, ease: "easeOut" },
+    },
+  };
+
+  return (
+    <div className="relative min-h-screen bg-slate-950 text-white selection:bg-[#b026ff]/30 overflow-x-hidden">
+      <FloatingOctopus />
+      {/* Header */}
+      <motion.header
+        initial={{ y: -100, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] as any }}
+        className="fixed top-0 left-0 right-0 z-50 px-4 sm:px-6 py-4 sm:py-6"
+      >
+        <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-[1fr_auto_1fr] items-center">
+          {/* Logo - Sol Taraf */}
+          <div 
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="text-2xl font-black tracking-tighter bg-clip-text text-transparent bg-gradient-to-r from-white to-white/40 justify-self-start cursor-pointer hover:opacity-80 transition-opacity"
+          >
+            OCTOQUS
+          </div>
+
+          {/* Nav - Orta (Tam Hizalı) */}
+          <nav className="hidden md:flex items-center gap-8 justify-center">
+            <a href="#features" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Özellikler</a>
+            <a href="#how-it-works" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Nasıl Çalışır?</a>
+            <a href="#community" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Topluluk</a>
+          </nav>
+
+          {/* Buttons - Sağ Taraf */}
+          <div className="flex items-center gap-2 sm:gap-4 justify-self-end">
+            <button
+              onClick={() => navigate('/login')}
+              className="px-3 sm:px-6 py-2 sm:py-2.5 text-xs sm:text-sm font-bold text-white/80 hover:text-white transition-colors"
+            >
+              Giriş Yap
+            </button>
+            <button
+              onClick={() => navigate('/register')}
+              className="px-3 sm:px-6 py-2 sm:py-2.5 text-xs sm:text-sm font-bold bg-white text-black rounded-xl hover:bg-[#00f0ff] hover:text-black transition-all"
+            >
+              Kayıt Ol
+            </button>
+          </div>
+        </div>
+      </motion.header>
+
+      {/* Dynamic Background */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <motion.div
+          className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] rounded-full bg-gradient-to-br from-[#b026ff]/15 to-transparent blur-[80px] md:blur-[120px] will-change-transform"
+          animate={{
+            x: [0, 50, 0],
+            y: [0, 80, 0],
+            scale: [1, 1.2, 1],
+          }}
+          transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+        />
+        <motion.div
+          className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full bg-gradient-to-tl from-[#00f0ff]/10 to-transparent blur-[80px] md:blur-[120px] will-change-transform"
+          animate={{
+            x: [0, -60, 0],
+            y: [0, -40, 0],
+            scale: [1, 1.3, 1],
+          }}
+          transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
+        />
+
+        {/* Subtle Grid Overlay */}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]" />
+      </div>
+
+      {/* Hero Section */}
+      <section className="relative min-h-screen flex flex-col items-center justify-center px-4 pt-16 sm:pt-20">
+        <motion.div
+          style={{ opacity: heroOpacity, scale: heroScale, y: heroY }}
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+          className="max-w-6xl w-full text-center relative z-10"
+        >
+          {/* 'Geleceğin Finans Yönetimi' kaldırıldı */}
+
+
+          <motion.h1
+            variants={window.innerWidth < 768 ? mobileItemVariants : itemVariants}
+            className="text-4xl sm:text-6xl md:text-9xl font-black mb-6 sm:mb-8 tracking-tighter leading-[0.9]"
+          >
+            Harcamalarını <br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#b026ff] via-[#704dff] to-[#00f0ff] filter drop-shadow-[0_0_20px_rgba(176,38,255,0.4)]">
+              Octoqus
+            </span> <br />
+            ile Sanata Dönüştür
+          </motion.h1>
+
+          <motion.p
+            variants={window.innerWidth < 768 ? mobileItemVariants : itemVariants}
+            className="text-slate-400 text-base sm:text-lg md:text-2xl max-w-3xl mx-auto mb-8 sm:mb-14 leading-relaxed font-light px-2"
+          >
+            Arkadaş gruplarınızdaki borç-alacak karmaşasına son verin.
+            Octoqus, harcamalarınızı optimize eder, makbuzlarınızı arşivler ve
+            finansal ilişkilerinizi şeffaf bir sosyal ağa dönüştürür.
+          </motion.p>
+
+          <motion.div
+            variants={window.innerWidth < 768 ? mobileItemVariants : itemVariants}
+            className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6 mt-4"
+          >
+            <button
+              onClick={() => navigate('/register')}
+              className="group relative px-8 sm:px-12 py-4 sm:py-5 bg-gradient-to-r from-[#b026ff] to-[#704dff] text-white font-black rounded-2xl overflow-hidden transition-all hover:scale-105 active:scale-95 shadow-[0_0_30px_rgba(176,38,255,0.3)] hover:shadow-[0_0_50px_rgba(176,38,255,0.5)] w-full sm:w-auto"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-[#00f0ff] to-[#b026ff] opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              <span className="relative flex items-center justify-center gap-3">
+                Şimdi Keşfet
+                <ArrowRight size={22} className="group-hover:translate-x-2 transition-transform duration-300" />
+              </span>
+            </button>
+
+            <button
+              onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
+              className="group px-8 sm:px-12 py-4 sm:py-5 text-white font-bold border border-white/10 hover:border-white/30 rounded-2xl hover:bg-white/5 transition-all flex items-center justify-center gap-3 w-full sm:w-auto"
+            >
+              Nasıl Çalışır?
+              <div className="w-1.5 h-1.5 rounded-full bg-[#00f0ff] group-hover:scale-150 transition-transform duration-300" />
+            </button>
+          </motion.div>
+        </motion.div>
+
+        {/* Floating App Mockups */}
+        <div className="absolute inset-0 pointer-events-none z-0 hidden lg:block">
+          <FloatingElement
+            delay={0.5}
+            initialPos={{ top: '20%', left: '10%' }}
+            className="w-64 p-6 rounded-3xl bg-slate-900/40 border border-white/10 backdrop-blur-2xl"
+          >
+            <div className="flex items-center gap-4 mb-4">
+              <div className="p-2 bg-[#b026ff]/20 rounded-lg"><TrendingUp size={20} className="text-[#b026ff]" /></div>
+              <div className="text-sm font-bold">Borç Dengesi</div>
+            </div>
+            <div className="text-2xl font-black text-[#00f0ff]">Optimize Edildi</div>
+            <div className="text-[10px] text-slate-500 mt-2 uppercase tracking-widest font-bold">Netting Algorithm</div>
+          </FloatingElement>
+
+          <FloatingElement
+            delay={1}
+            initialPos={{ top: '60%', right: '8%' }}
+            className="w-72 p-6 rounded-3xl bg-slate-900/40 border border-white/10 backdrop-blur-2xl"
+          >
+            <div className="flex justify-between items-center mb-4">
+              <div className="text-sm font-bold">Tek Tıkla Makbuz Arşivi</div>
+              <CheckCircle2 size={16} className="text-[#00f0ff]" />
+            </div>
+            <div className="flex items-center gap-3 p-3 bg-white/5 rounded-2xl border border-white/5">
+              <div className="w-10 h-10 bg-slate-800 rounded-xl overflow-hidden flex items-center justify-center text-[10px] text-slate-500">IMG</div>
+              <div className="flex-1">
+                <div className="w-16 h-2 bg-slate-700 rounded-full mb-2" />
+                <div className="w-10 h-1.5 bg-slate-800 rounded-full" />
+              </div>
+            </div>
+          </FloatingElement>
+
+          <FloatingElement
+            delay={1.5}
+            initialPos={{ bottom: '15%', left: '15%' }}
+            className="w-56 p-6 rounded-3xl bg-slate-900/40 border border-white/10 backdrop-blur-2xl"
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <div className="text-xs font-bold text-slate-400">Anlık Sohbet</div>
+            </div>
+            <div className="space-y-2">
+              <div className="w-full h-2 bg-slate-800 rounded-full" />
+              <div className="w-2/3 h-2 bg-slate-700 rounded-full" />
+            </div>
+          </FloatingElement>
+        </div>
+
+        {/* Scroll Indicator */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 3, duration: 1 }}
+          className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-4"
+        >
+          <div className="w-[1px] h-20 bg-gradient-to-b from-transparent via-white/30 to-transparent relative overflow-hidden">
+            <motion.div
+              animate={{ y: [0, 80] }}
+              transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+              className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-transparent to-[#00f0ff]"
+            />
+          </div>
+          <span className="text-[10px] text-slate-500 uppercase tracking-[0.5em] font-black">Keşfet</span>
+        </motion.div>
+      </section>
+
+      {/* Features Grid */}
+      <section id="features" className="relative py-20 sm:py-48 px-4">
+        <div className="max-w-7xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-24"
+          >
+            <h2 className="text-3xl sm:text-4xl md:text-6xl font-black mb-6">Neden Octoqus?</h2>
+            <div className="w-24 h-1 bg-gradient-to-r from-[#b026ff] to-[#00f0ff] mx-auto rounded-full" />
+          </motion.div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 sm:gap-10">
+            <FeatureCard
+              icon={<BarChart3 className="text-[#b026ff]" size={40} />}
+              title="Karmaşayı Sadeleştiren Finansal Zeka"
+              description="Grup harcamalarındaki karmaşık işlemleri, gelişmiş 'Netting' algoritmamızla minimum transfere indirgeyin. Octoqus, kimin kime ne ödeyeceğini matematiksel hassasiyetle hesaplar."
+              delay={0.1}
+            />
+            <FeatureCard
+              icon={<Users className="text-[#704dff]" size={40} />}
+              title="Aylık veya Yıllık Olarak Takip"
+              description="Grup harcamalarınızı hem ortak hem de bireysel olarak takip ederek, bütçenizi çok daha düzenli ve kontrollü bir şekilde yönetebilirsiniz."
+              delay={0.2}
+            />
+            <FeatureCard
+              icon={<CheckCircle2 className="text-[#00f0ff]" size={40} />}
+              title="Verileriniz, Sizin Kalenizde"
+              description="Finansal gizliliğiniz ödün verilemez. Verileriniz size özel VDS altyapısında barındırılır ve saatlik periyotlarla otomatik yedeklenerek en üst düzeyde korunur."
+              delay={0.3}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Nasıl Çalışır? (How It Works) */}
+      <section id="how-it-works" className="relative py-20 sm:py-48 px-4 bg-slate-900/20">
+        <div className="max-w-7xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-24"
+          >
+            <h2 className="text-3xl sm:text-4xl md:text-6xl font-black mb-6">Nasıl Çalışır?</h2>
+            <p className="text-slate-400 text-lg max-w-2xl mx-auto">4 Basit Adımda Octoqus Deneyimi</p>
+          </motion.div>
+
+          <div className="relative">
+            {/* Bağlantı Çizgisi (Desktop) */}
+            <div className="absolute top-1/2 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-[#b026ff]/20 to-transparent hidden md:block -translate-y-1/2" />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8 relative z-10">
+              <StepCard
+                number="01"
+                title="Ücretsiz Kayıt Ol"
+                description="Saniyeler içinde hesabını oluştur ve kişisel finans profilini hazırla."
+                icon={<Users size={32} className="text-[#b026ff]" />}
+              />
+              <StepCard
+                number="02"
+                title="Grubunu Kur"
+                description="Ev arkadaşların veya gezi grubun için bir harcama grubu oluştur, grup içindeki 'Yönetim' kısmından grup katılım kodunu arkadaşlarınla paylaş."
+                icon={<Users size={32} className="text-[#704dff]" />}
+              />
+              <StepCard
+                number="03"
+                title="Harcama Ekle"
+                description="Kim ne kadar ödedi? Makbuzun fotoğrafını çek ve gruba gönder."
+                icon={<Wallet size={32} className="text-[#00f0ff]" />}
+              />
+              <StepCard
+                number="04"
+                title="Borçları Kapat"
+                description="Algoritmamız herkesin payını hesaplar. Tek tıkla ödeşin ve rahatlayın."
+                icon={<CheckCircle2 size={32} className="text-green-500" />}
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="py-20 border-t border-white/5 bg-black/50 text-center">
+        <div className="text-2xl font-black tracking-tighter mb-8 bg-clip-text text-transparent bg-gradient-to-r from-white to-white/40">OCTOQUS</div>
+        <div className="flex justify-center gap-8 text-slate-500 text-sm mb-12">
+          <a href="#" className="hover:text-white transition-colors">Gizlilik</a>
+          <a href="#" className="hover:text-white transition-colors">Şartlar</a>
+          <a href="#" className="hover:text-white transition-colors">İletişim</a>
+        </div>
+        <p className="text-slate-600 text-[10px] font-bold tracking-widest uppercase">&copy; 2026 OCTOQUS</p>
+      </footer>
+    </div>
+  );
+};
+
+const StepCard = ({ number, title, description, icon }: { number: string, title: string, description: string, icon: React.ReactNode }) => (
+  <motion.div
+    initial={{ opacity: 0, scale: 0.9 }}
+    whileInView={{ opacity: 1, scale: 1 }}
+    viewport={{ once: true }}
+    className="relative p-8 rounded-3xl bg-slate-900/50 border border-white/5 backdrop-blur-xl hover:border-[#b026ff]/30 transition-all group"
+  >
+    <div className="absolute -top-4 -left-4 w-12 h-12 bg-slate-950 border border-white/10 rounded-xl flex items-center justify-center text-xs font-black text-[#b026ff] shadow-2xl group-hover:scale-110 transition-transform">
+      {number}
+    </div>
+    <div className="mb-6 p-4 w-16 h-16 rounded-2xl bg-slate-950 border border-white/5 flex items-center justify-center group-hover:rotate-12 transition-transform">
+      {icon}
+    </div>
+    <h4 className="text-xl font-black mb-3 text-white">{title}</h4>
+    <p className="text-slate-400 text-sm leading-relaxed">{description}</p>
+  </motion.div>
+);
+
+const FloatingElement = ({ children, delay, initialPos, className }: { children: React.ReactNode, delay: number, initialPos: React.CSSProperties, className: string }) => (
+  <motion.div
+    initial={{ opacity: 0, ...initialPos as any }}
+    animate={{
+      opacity: 1,
+      y: [0, -20, 0],
+      rotate: [0, 2, 0],
+    }}
+    transition={{
+      opacity: { duration: 1, delay },
+      y: { duration: 6, repeat: Infinity, ease: "easeInOut", delay },
+      rotate: { duration: 8, repeat: Infinity, ease: "easeInOut", delay }
+    }}
+    className={`absolute ${className}`}
+  >
+    {children}
+  </motion.div>
+);
+
+const FeatureCard = ({ icon, title, description, delay }: { icon: React.ReactNode, title: string, description: string, delay: number }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 40 }}
+    whileInView={{ opacity: 1, y: 0 }}
+    viewport={{ once: true }}
+    transition={{ duration: 0.8, delay, ease: [0.16, 1, 0.3, 1] }}
+    className="group p-6 sm:p-10 rounded-[24px] sm:rounded-[32px] bg-white/[0.02] border border-white/5 hover:border-[#b026ff]/30 hover:bg-white/[0.04] transition-all duration-500"
+  >
+    <div className="mb-8 p-5 w-20 h-20 rounded-3xl bg-slate-900 border border-white/5 flex items-center justify-center group-hover:scale-110 group-hover:rotate-6 transition-all duration-500 shadow-xl">
+      {icon}
+    </div>
+    <h3 className="text-2xl font-black mb-4 group-hover:text-[#00f0ff] transition-colors">{title}</h3>
+    <p className="text-slate-400 leading-relaxed text-lg font-light">{description}</p>
+  </motion.div>
+);
+

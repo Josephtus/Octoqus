@@ -1,0 +1,38 @@
+__pycache__/
+*.pyc
+.env
+.DS_Store
+mysql-data/
+venv/
+.pytest_cache/
+backend/uploads/
+mysql-data/
+*.db
+
+# Docker
+# docker-compose.dev.yml artık takip ediliyor
+
+# Frontend
+node_modules/
+dist/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test Results
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp

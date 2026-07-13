@@ -1,0 +1,48 @@
+# =============================================================================
+# Docker Compose Override - LOCAL DEVELOPMENT ONLY
+# Bu dosya docker-compose.yml'daki production ayarlarını override eder.
+# Kullanım: docker-compose -f docker-compose.yml -f docker-compose.override.yml up
+# =============================================================================
+
+version: "3.9"
+
+services:
+  db:
+    ports:
+      - "3308:3306"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  backend:
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      - SANIC_DEBUG=true
+      - CORS_ORIGINS=*
+
+  # Development'da frontend dev server kullan (hot-reload)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: octoqus_frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5174:5173"
+    depends_on:
+      - backend
+
+  # Development'da nginx ve certbot devre dışı
+  nginx:
+    profiles:
+      - production
+
+  certbot:
+    profiles:
+      - production

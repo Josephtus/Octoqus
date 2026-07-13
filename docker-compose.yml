@@ -1,0 +1,172 @@
+version: "3.9"
+
+# =============================================================================
+# Octoqus - Expense Tracking & Social Finance Platform
+# Docker Compose - Production Infrastructure
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # MySQL 8.0 - Primary Relational Database
+  # ---------------------------------------------------------------------------
+  db:
+    image: mysql:8.0
+    container_name: octoqus_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    # Production'da dış port kapalı — sadece internal network üzerinden erişim
+    # ports:
+    #   - "3308:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - octoqus_net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${MYSQL_USER}", "-p${MYSQL_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+        reservations:
+          memory: 512M
+
+  # ---------------------------------------------------------------------------
+  # Redis 7 - Cache + Rate Limiting + Pub/Sub (Chat) + Task Queue
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: octoqus_redis
+    restart: unless-stopped
+    command: >
+      redis-server --requirepass ${REDIS_PASSWORD} --maxmemory 256mb --maxmemory-policy allkeys-lru --appendonly yes
+    # Production'da dış port kapalı
+    # ports:
+    #   - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - octoqus_net
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 64M
+
+  # ---------------------------------------------------------------------------
+  # Backend - Sanic Async API + WebSocket Server
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: octoqus_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - SANIC_WORKER_STARTUP_TIMEOUT=60.0
+      - SANIC_GRACEFUL_SHUTDOWN_TIMEOUT=60.0
+    # Backend artık doğrudan dışa açılmaz — Nginx proxy eder
+    expose:
+      - "8000"
+    volumes:
+      - uploads_data:/app/uploads
+    networks:
+      - octoqus_net
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+        reservations:
+          memory: 128M
+
+  # ---------------------------------------------------------------------------
+  # Frontend - React (Vite) Production Build → Nginx'e kopyalanır
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: octoqus_frontend
+    restart: unless-stopped
+    networks:
+      - octoqus_net
+    depends_on:
+      - backend
+
+  # ---------------------------------------------------------------------------
+  # Nginx - Reverse Proxy + SSL Termination + Static File Server
+  # ---------------------------------------------------------------------------
+  nginx:
+    image: nginx:alpine
+    container_name: octoqus_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    networks:
+      - octoqus_net
+    depends_on:
+      - backend
+      - frontend
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 32M
+
+  # ---------------------------------------------------------------------------
+  # Certbot - Let's Encrypt SSL Certificate
+  # ---------------------------------------------------------------------------
+  certbot:
+    image: certbot/certbot
+    container_name: octoqus_certbot
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    # İlk sertifika: docker-compose run certbot certonly --webroot -w /var/www/certbot -d octoqus.com
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+# =============================================================================
+# Named Volumes - Kalıcı Depolama
+# =============================================================================
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+  uploads_data:
+    driver: local
+    name: octoqus_uploads_data
+
+# =============================================================================
+# Networks - Servisler arası izole iletişim
+# =============================================================================
+networks:
+  octoqus_net:
+    driver: bridge
