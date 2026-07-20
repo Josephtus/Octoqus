@@ -15,7 +15,7 @@
 **Production URL:** https://octoqus.com
 
 <div align="center">
-  <img src="./assets/mobil_design.png" alt="Octoqus Mobile Presentation" width="80%">
+  <img src="./assets/mobil_design.png" alt="Octoqus Mobile Presentation" width="100%">
 </div>
 
 ---
@@ -107,72 +107,15 @@
 
 ## 📸 Uygulama Arayüzü
 
-<p align="center">
-  <img src="./assets/" width="48%" alt="Kullanıcı Paneli (Dashboard)">
-  <img src="./assets/" width="48%" alt="Gelişmiş İstatistikler">
-</p>
-<p align="center">
-  <img src="./assets/" width="98%" alt="Harcama Kayıtları ve Filtreleme">
-</p>
+<div align="center">
+  <img src="./assets/panel.png" alt="Octoqus Mobile Presentation" width="100%">
+</div>
 
----
+<div align="center">
+  <img src="./assets/groups.png" alt="Octoqus Mobile Presentation" width="50%">
+  <img src="./assets/groups2.png" alt="Octoqus Mobile Presentation" width="50%">
 
-## 📁 Proje Yapısı
-
-```
-Octoqus/
-├── frontend/                 # React + TypeScript + Vite
-│   ├── src/
-│   │   ├── components/       # UI bileşenleri (Dashboard, Forms, vb.)
-│   │   ├── pages/           # Route-based page containers
-│   │   ├── store/           # Zustand state management
-│   │   ├── services/        # API client (fetch wrappers)
-│   │   ├── hooks/           # Custom React hooks
-│   │   └── App.tsx          # Main router & layout
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── vite.config.ts
-│   ├── tailwind.config.js
-│   └── Dockerfile           # Multi-stage build (Node → Nginx)
-│
-├── backend/                  # Python + Sanic + SQLAlchemy
-│   ├── src/
-│   │   ├── main.py          # Sanic app entry point (lifecycle hooks, middleware)
-│   │   ├── database.py      # SQLAlchemy async engine setup
-│   │   ├── models/          # SQLAlchemy ORM models
-│   │   ├── routes/          # Blueprint API endpoints
-│   │   │   ├── auth.py      # Login, Register, Refresh
-│   │   │   ├── users.py     # Profile management
-│   │   │   ├── groups.py    # Group CRUD & membership
-│   │   │   ├── expenses.py  # Expense tracking
-│   │   │   ├── messages.py  # Chat (WebSocket)
-│   │   │   ├── social.py    # Posts & feed
-│   │   │   ├── reports.py   # Report submission
-│   │   │   └── admin.py     # Admin endpoints
-│   │   ├── services/
-│   │   │   ├── security.py  # Authentication & authorization
-│   │   │   ├── common.py    # Helpers (MIME detection, etc.)
-│   │   │   ├── pubsub.py    # Redis pub/sub manager
-│   │   │   └── schemas.py   # Pydantic validation schemas
-│   ├── alembic/             # Database migrations
-│   ├── requirements.txt      # Python dependencies (pinned versions)
-│   ├── seed.py              # Database seed script
-│   ├── Dockerfile           # Multi-stage build (Python slim)
-│   └── nginx.conf           # (Nginx config for production)
-│
-├── nginx/
-│   ├── nginx.conf           # Main Nginx configuration
-│   └── conf.d/              # Site-specific configs
-│
-├── certbot/                 # Let's Encrypt certificate storage
-│   ├── conf/
-│   └── www/
-│
-├── docker-compose.yml       # Production infrastructure (5 services)
-├── .env.example             # Environment template
-├── DOCS_PART1_BACKEND_SECURITY.md  # Technical documentation
-└── README.md               # This file
-```
+</div>
 
 ---
 
@@ -291,36 +234,6 @@ Tables:
 ├── posts (id, user_id, content, created_at)
 ├── reports (id, reporter_id, reported_entity_id, type, reason, status)
 └── audit_logs (id, user_id, action, table_name, old_value, new_value, created_at)
-```
-
----
-
-## 🧪 Testing
-
-### Frontend Tests
-```bash
-cd frontend
-
-# Unit & integration tests (Vitest)
-npm run test
-
-# Interactive UI
-npm run test:ui
-
-# E2E tests (Playwright)
-npm run test:e2e
-npm run test:e2e:ui
-```
-
-### Backend Tests
-```bash
-cd backend
-
-# Pytest suite
-pytest
-
-# With async support
-pytest -m asyncio
 ```
 
 ---
@@ -464,15 +377,9 @@ Bu proje **personal portfolio** amaçlı olsa da, fork & improvement hoş karş�
 
 ---
 
-## 📄 Lisans
-
-MIT License — Detaylar için `LICENSE` dosyasına bakınız.
-
----
-
 ## 📧 İletişim
 
-**Developer:** Yusuf (Josephtus)  
+**Developer:** Yusuf Uyanoğlu (Josephtus)  
 **Project URL:** https://github.com/Josephtus/Octoqus  
 **Live Site:** https://octoqus.com  
 
@@ -492,5 +399,4 @@ MIT License — Detaylar için `LICENSE` dosyasına bakınız.
 
 ---
 
-> **Built with ❤️ for production-grade software development excellence.**
 
