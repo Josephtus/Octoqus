@@ -333,54 +333,6 @@ POST  /api/expenses/<expense_id>/export (PDF/Excel)
 
 ---
 
-## 🚀 Deployment Checklist
-
-- [ ] `.env` variables configured (all required)
-- [ ] SSL certificate obtained (Let's Encrypt)
-- [ ] Database backups configured
-- [ ] Redis persistence enabled (`appendonly yes`)
-- [ ] Docker Compose healthchecks verified
-- [ ] CORS origins whitelisted
-- [ ] SMTP credentials for password reset
-- [ ] Static files CDN configured (optional)
-- [ ] Monitoring setup (logs aggregation)
-- [ ] Rate limits tuned for expected traffic
-
----
-
-## 📚 Dokumentasyon
-
-- **Technical Deep-Dive:** `DOCS_PART1_BACKEND_SECURITY.md`
-- **API Reference:** `http://octoqus.com/api/docs`
-- **Frontend Component Library:** Storybook (in development)
-
----
-
-## 🎓 Öğrenme Kaynakları
-
-Bu projede kullanılan teknolojiler hakkında:
-
-- **React 19 + TypeScript:** https://react.dev
-- **Tailwind CSS:** https://tailwindcss.com
-- **Zustand:** https://zustand-demo.vercel.app/
-- **Sanic Framework:** https://sanic.dev/
-- **SQLAlchemy Async:** https://docs.sqlalchemy.org/20/orm/extensions/asyncio.html
-- **Docker Best Practices:** https://docs.docker.com/
-
----
-
-## 🤝 Katkı Kuralları
-
-Bu proje **personal portfolio** amaçlı olsa da, fork & improvement hoş karşılanır:
-
-1. Repository'yi fork et
-2. Feature branch oluştur (`git checkout -b feature/amazing-feature`)
-3. Changes commit et (`git commit -m 'Add amazing feature'`)
-4. Push et (`git push origin feature/amazing-feature`)
-5. Pull Request aç
-
----
-
 ## 📧 İletişim
 
 **Developer:** Yusuf Uyanoğlu (Josephtus)  
