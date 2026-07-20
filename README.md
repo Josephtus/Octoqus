@@ -381,7 +381,7 @@ POST  /api/expenses/<expense_id>/export (PDF/Excel)
 
 ## 📄 License
 
-This project is licensed under the **MIT License** — see the [LICENSE](./LICENSE) file for details.
+This project is licensed under the **Non-Commercial** — see the [LICENSE](./LICENSE) file for details.
 
 ---
 
