@@ -36,7 +36,8 @@
 | **Database** | MySQL 8.0 |
 | **Cache & Pub/Sub** | Redis 7 |
 | **API Documentation** | OpenAPI 3.0 (Swagger) |
-| **Infrastructure** | Docker + Docker Compose |
+| **Infrastructure** | VDS Server + Docker + Docker Compose |
+| **Backup Storage**| Google Drive (Hourly Rolling Backup) |
 | **Web Server** | Nginx (Reverse Proxy + SSL) |
 | **SSL Certificates** | Let's Encrypt (Certbot) |
 
@@ -249,6 +250,13 @@ Tables:
 ---
 
 ## 🌟 Geliştirici Notları
+
+### 🔄 Altyapı ve Otomatik Yedekleme (Infrastructure & Backups)
+VDS Hosting: Tüm sistem, kaynak yalıtımı ve performans optimizasyonu sağlayan özel bir VDS (Virtual Dedicated Server) üzerinde koşmaktadır.
+
+Rolling Backup (Döngüsel Yedekleme): Veri güvenliğini en üst düzeye çıkarmak için sistem her saat başı otomatik olarak Google Drive üzerine yedeklenir.
+
+Depolama Optimizasyonu: Google Drive üzerinde maksimum 24 adet (1 günlük) yedek tutulur. 24. yedekten sonra sistem, alan optimizasyonu sağlamak amacıyla en eski (ilk) yedeğin üzerine yazarak ilerler.
 
 ### Dosya Yükleme Pipeline
 - Avatar: `./uploads/avatars/` (5 MB max, resim tipi validasyonu)
