@@ -15,7 +15,7 @@
   ![Redis](https://img.shields.io/badge/Redis_7-DC382D?style=for-the-badge&logo=redis&logoColor=white)
   ![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
   ![Nginx](https://img.shields.io/badge/Nginx-009639?style=for-the-badge&logo=nginx&logoColor=white)
-  ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)
+  ![License: Non-Commercial](https://img.shields.io/badge/License-Non_Commercial-red.svg?style=for-the-badge)
 
 </div>
 
