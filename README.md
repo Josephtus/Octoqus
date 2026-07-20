@@ -1,16 +1,49 @@
-# 🎯 Octoqus - Harcama Takip & Sosyal Finans Platformu
+# 🎯 Octoqus - Expense Tracking & Social Finance Platform
 
 <div align="center">
   <img src="./assets/mainpage.png" alt="Octoqus Hero Desktop" width="100%">
+
+  <br/><br/>
+
+  ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
+  ![React](https://img.shields.io/badge/React_19-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+  ![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)
+  ![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS_4-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
+  ![Python](https://img.shields.io/badge/Python_3.11-3776AB?style=for-the-badge&logo=python&logoColor=white)
+  ![Sanic](https://img.shields.io/badge/Sanic-FF0D68?style=for-the-badge&logo=sanic&logoColor=white)
+  ![MySQL](https://img.shields.io/badge/MySQL_8.0-4479A1?style=for-the-badge&logo=mysql&logoColor=white)
+  ![Redis](https://img.shields.io/badge/Redis_7-DC382D?style=for-the-badge&logo=redis&logoColor=white)
+  ![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+  ![Nginx](https://img.shields.io/badge/Nginx-009639?style=for-the-badge&logo=nginx&logoColor=white)
+  ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)
+
 </div>
 
-> **Production-ready full-stack web application** için harcama yönetimi ve sosyal finansal işbirliği sunan modern bir platform.
+> A modern **production-ready full-stack web application** for expense management and social financial collaboration.
 
 ---
 
-## 📋 Özet
+## 📑 Table of Contents
 
-**OctoqusLive**, kullanıcıların kişisel harcamalarını takip edebileceği, grup içerisinde harcamaları yönetebileceği ve sosyal ağ benzeri bir ortamda finans konularını paylaşabildiği full-stack bir web uygulamasıdır. Platform, modern web teknolojileri ile geliştirilmiş, **production-grade** mimarisi ve güvenlik standartları ile hayata geçirilmiştir.
+- [Overview](#-overview)
+- [Technical Architecture](#️-technical-architecture)
+- [Key Features](#-key-features)
+- [Application Screenshots](#-application-screenshots)
+- [Installation & Setup](#-installation--setup)
+- [Security Features](#-security-features)
+- [Database Schema](#-database-schema)
+- [Performance & Scalability](#-performance--scalability)
+- [Developer Notes](#-developer-notes)
+- [API Endpoint Examples](#-api-endpoint-examples)
+- [Project Stats](#-project-stats)
+- [License](#-license)
+- [Contact](#-contact)
+
+---
+
+## 📋 Overview
+
+**OctoqusLive** is a full-stack web application that enables users to track personal expenses, manage group-based spending, and share financial topics in a social-network-like environment. The platform is built with modern web technologies and features a **production-grade** architecture with enterprise-level security standards.
 
 **Production URL:** https://octoqus.com
 
@@ -20,14 +53,14 @@
 
 ---
 
-## 🏗️ Teknik Mimari
+## 🏗️ Technical Architecture
 
 ### Tech Stack
 
-| Bileşen | Teknoloji |
-|---------|-----------|
+| Component | Technology |
+|-----------|-----------|
 | **Frontend** | React 19 + TypeScript + Vite |
-| **Styling** | Tailwind CSS 4 + Framer Motion (Animasyonlar) |
+| **Styling** | Tailwind CSS 4 + Framer Motion (Animations) |
 | **State Management** | Zustand (Lightweight + Reactive) |
 | **Validation** | Zod + React Hook Form |
 | **Testing** | Vitest + Playwright (E2E) |
@@ -37,11 +70,11 @@
 | **Cache & Pub/Sub** | Redis 7 |
 | **API Documentation** | OpenAPI 3.0 (Swagger) |
 | **Infrastructure** | VDS Server + Docker + Docker Compose |
-| **Backup Storage**| Google Drive (Hourly Rolling Backup) |
+| **Backup Storage** | Google Drive (Hourly Rolling Backup) |
 | **Web Server** | Nginx (Reverse Proxy + SSL) |
 | **SSL Certificates** | Let's Encrypt (Certbot) |
 
-### Sistem Mimarisi
+### System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -69,9 +102,9 @@
 
 ---
 
-## 🚀 Temel Özellikler
+## 🚀 Key Features
 
-### 1. **Kimlik Doğrulama & Güvenlik**
+### 1. **Authentication & Security**
 - ✅ JWT-based authentication (HttpOnly Cookies + Bearer Token hybrid)
 - ✅ Bcrypt password hashing (12 rounds)
 - ✅ Email verification & password reset workflow
@@ -79,26 +112,26 @@
 - ✅ CORS whitelist (production domain locked)
 - ✅ Structured logging (JSON format for aggregation)
 
-### 2. **Harcama Yönetimi**
-- 📊 Kişisel harcama takibi
-- 👥 Grup bazlı harcama yönetimi (shared expenses)
-- 💰 Otomatik borç/alacak hesaplaması
+### 2. **Expense Management**
+- 📊 Personal expense tracking
+- 👥 Group-based expense management (shared expenses)
+- 💰 Automatic debt/credit calculation
 - 📈 Export features (Excel, PDF)
-- 🏷️ Kategorilendirme & filtering
+- 🏷️ Categorization & filtering
 
-### 3. **Grup Sistemi**
-- 👨‍👩‍👧‍👦 Grup oluşturma ve üye yönetimi
-- 📝 Gruplara katılım approval sistemi
+### 3. **Group System**
+- 👨‍👩‍👧‍👦 Group creation and member management
+- 📝 Membership approval system
 - 🎯 Role-based permissions (User, Leader, Admin)
-- 💬 Grup-specific messaging (WebSocket)
+- 💬 Group-specific messaging (WebSocket)
 
-### 4. **Sosyal Ağ Özellikleri**
-- 🤝 User profiles ve public sharing
+### 4. **Social Network Features**
+- 🤝 User profiles and public sharing
 - 💭 Social posts & feed
 - 🗣️ Real-time messaging (WebSocket)
 - 📢 Report system (Spam/abuse reporting)
 
-### 5. **Admin Kontrol Paneli**
+### 5. **Admin Control Panel**
 - 📊 User & platform statistics
 - 🔍 Audit logging
 - 🚫 User management & moderation
@@ -106,31 +139,31 @@
 
 ---
 
-## 📸 Uygulama Arayüzü
+## 📸 Application Screenshots
 
 <div align="center">
-  <img src="./assets/panel.png" alt="Octoqus Mobile Presentation" width="100%">
-  <img src="./assets/groups.png" alt="Octoqus Mobile Presentation" width="100%">
-  <img src="./assets/groups2.png" alt="Octoqus Mobile Presentation" width="100%">
+  <img src="./assets/panel.png" alt="Octoqus Dashboard Panel" width="100%">
+  <img src="./assets/groups.png" alt="Octoqus Groups View" width="100%">
+  <img src="./assets/groups2.png" alt="Octoqus Group Details" width="100%">
 </div>
 
 ---
 
-## 🔧 Kurulum & Çalıştırma
+## 🔧 Installation & Setup
 
-### Gereksinimler
+### Prerequisites
 - Docker 20.10+
 - Docker Compose 1.29+
-- (Development için: Node 20+, Python 3.11+)
+- (For development: Node 20+, Python 3.11+)
 
 ### Production Deployment
 
 ```bash
-# 1. Repository'yi klonla
+# 1. Clone the repository
 git clone https://github.com/Josephtus/Octoqus.git
 cd Octoqus
 
-# 2. Environment dosyasını oluştur
+# 2. Create the environment file
 cp .env.example .env
 
 # 3. Critical .env variables (must be set):
@@ -139,19 +172,19 @@ cp .env.example .env
 # - REDIS_PASSWORD
 # - CORS_ORIGINS
 # - JWT_SECRET
-# - SMTP_PASSWORD (email reset için)
+# - SMTP_PASSWORD (for email reset)
 
-# 4. Docker Compose ile tüm servisleri başlat
+# 4. Start all services with Docker Compose
 docker-compose up -d
 
-# 5. Database migration (production'da önceden yapılmış olmalı)
+# 5. Run database migrations
 docker-compose exec backend alembic upgrade head
 
-# 6. SSL sertifikası için Certbot'u çalıştır (ilk kez)
+# 6. Set up SSL certificate with Certbot (first time only)
 docker-compose run certbot certonly --webroot -w /var/www/certbot -d octoqus.com
 ```
 
-### Development Kurulum
+### Development Setup
 
 ```bash
 # Frontend
@@ -161,14 +194,14 @@ npm run dev          # Vite dev server (http://localhost:5173)
 npm run test:ui      # Vitest UI
 npm run test:e2e:ui  # Playwright UI
 
-# Backend (ayrı terminal)
+# Backend (separate terminal)
 cd backend
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
 venv\Scripts\activate     # Windows
 pip install -r requirements.txt
 
-# Database setup (ilk kez)
+# Database setup (first time only)
 python seed.py
 
 # Sanic server
@@ -179,9 +212,9 @@ python -m src.main
 
 ---
 
-## 🔐 Güvenlik Özellikleri
+## 🔐 Security Features
 
-### Backend Güvenlik
+### Backend Security
 
 1. **Authentication Hierarchy:**
    - HttpOnly JWT cookies (XSS resistant)
@@ -205,7 +238,7 @@ python -m src.main
    - HTTPS/SSL enforcement (production)
    - Structured logging for audit trail
 
-### Frontend Güvenlik
+### Frontend Security
 
 1. **Token Management:**
    - HttpOnly cookies (automatic, XSS safe)
@@ -218,7 +251,7 @@ python -m src.main
 
 ---
 
-## 📊 Database Schema (High-Level)
+## 📊 Database Schema
 
 ```
 Tables:
@@ -237,8 +270,8 @@ Tables:
 
 ## 📈 Performance & Scalability
 
-| Metrik | Değer | Not |
-|--------|-------|-----|
+| Metric | Value | Note |
+|--------|-------|------|
 | **Frontend Build** | < 2s | Vite optimization |
 | **API Response Time** | < 100ms | Redis cache + async |
 | **Concurrent Users** | 1000+ | Sanic async workers |
@@ -249,18 +282,18 @@ Tables:
 
 ---
 
-## 🌟 Geliştirici Notları
+## 🌟 Developer Notes
 
-### 🔄 Altyapı ve Otomatik Yedekleme (Infrastructure & Backups)
-VDS Hosting: Tüm sistem, kaynak yalıtımı ve performans optimizasyonu sağlayan özel bir VDS (Virtual Dedicated Server) üzerinde koşmaktadır.
+### 🔄 Infrastructure & Automated Backups
+**VDS Hosting:** The entire system runs on a dedicated VDS (Virtual Dedicated Server) with resource isolation and performance optimization.
 
-Rolling Backup (Döngüsel Yedekleme): Veri güvenliğini en üst düzeye çıkarmak için sistem her saat başı otomatik olarak Google Drive üzerine yedeklenir.
+**Rolling Backup:** To maximize data safety, the system is automatically backed up to Google Drive every hour.
 
-Depolama Optimizasyonu: Google Drive üzerinde maksimum 24 adet (1 günlük) yedek tutulur. 24. yedekten sonra sistem, alan optimizasyonu sağlamak amacıyla en eski (ilk) yedeğin üzerine yazarak ilerler.
+**Storage Optimization:** A maximum of 24 backups (1 day's worth) are retained on Google Drive. After the 24th backup, the system overwrites the oldest backup to optimize storage usage.
 
-### Dosya Yükleme Pipeline
-- Avatar: `./uploads/avatars/` (5 MB max, resim tipi validasyonu)
-- Receipts: `./uploads/receipts/` (10 MB max, belge desteği)
+### File Upload Pipeline
+- Avatar: `./uploads/avatars/` (5 MB max, image type validation)
+- Receipts: `./uploads/receipts/` (10 MB max, document support)
 - MIME spoofing prevention: Magic bytes detection
 
 ### WebSocket (Chat)
@@ -269,15 +302,15 @@ Depolama Optimizasyonu: Google Drive üzerinde maksimum 24 adet (1 günlük) yed
 - Room-based messaging (per-group)
 
 ### Admin Audit Trail
-- Tüm kritik işlemler JSON loglanır
+- All critical operations are logged in JSON format
 - Timestamp + user_id + action tracked
-- Production ELK/Loki integrasyonuna hazır
+- Ready for production ELK/Loki integration
 
 ### Database Migrations
 ```bash
 cd backend
 
-# New migration oluştur
+# Create a new migration
 alembic revision --autogenerate -m "describe_change"
 
 # Apply migration
@@ -289,7 +322,7 @@ alembic downgrade -1
 
 ---
 
-## 📝 API Endpoint Örnekleri
+## 📝 API Endpoint Examples
 
 ### Authentication
 ```bash
@@ -333,14 +366,6 @@ POST  /api/expenses/<expense_id>/export (PDF/Excel)
 
 ---
 
-## 📧 İletişim
-
-**Developer:** Yusuf Uyanoğlu (Josephtus)  
-**Project URL:** https://github.com/Josephtus/Octoqus  
-**Live Site:** https://octoqus.com  
-
----
-
 ## 📊 Project Stats
 
 | Metric | Value |
@@ -351,8 +376,17 @@ POST  /api/expenses/<expense_id>/export (PDF/Excel)
 | **Total Lines of Code** | ~15,000+ |
 | **API Endpoints** | 40+ |
 | **Database Tables** | 10+ |
-| **Test Coverage** | In progress |
 
 ---
 
+## 📄 License
 
+This project is licensed under the **MIT License** — see the [LICENSE](./LICENSE) file for details.
+
+---
+
+## 📧 Contact
+
+**Developer:** Yusuf Uyanoğlu (Josephtus)
+**Project URL:** https://github.com/Josephtus/Octoqus
+**Live Site:** https://octoqus.com
