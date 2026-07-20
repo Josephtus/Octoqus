@@ -1,5 +1,9 @@
 # 🎯 Octoqus - Harcama Takip & Sosyal Finans Platformu
 
+<div align="center">
+  <img src="./assets/mainpage.png" alt="Octoqus Hero Desktop" width="100%">
+</div>
+
 > **Production-ready full-stack web application** için harcama yönetimi ve sosyal finansal işbirliği sunan modern bir platform.
 
 ---
@@ -9,6 +13,10 @@
 **OctoqusLive**, kullanıcıların kişisel harcamalarını takip edebileceği, grup içerisinde harcamaları yönetebileceği ve sosyal ağ benzeri bir ortamda finans konularını paylaşabildiği full-stack bir web uygulamasıdır. Platform, modern web teknolojileri ile geliştirilmiş, **production-grade** mimarisi ve güvenlik standartları ile hayata geçirilmiştir.
 
 **Production URL:** https://octoqus.com
+
+<div align="center">
+  <img src="./assets/mobil_design.png" alt="Octoqus Mobile Presentation" width="80%">
+</div>
 
 ---
 
@@ -94,6 +102,18 @@
 - 🔍 Audit logging
 - 🚫 User management & moderation
 - ⚙️ System configuration
+
+---
+
+## 📸 Uygulama Arayüzü
+
+<p align="center">
+  <img src="./assets/" width="48%" alt="Kullanıcı Paneli (Dashboard)">
+  <img src="./assets/" width="48%" alt="Gelişmiş İstatistikler">
+</p>
+<p align="center">
+  <img src="./assets/" width="98%" alt="Harcama Kayıtları ve Filtreleme">
+</p>
 
 ---
 
