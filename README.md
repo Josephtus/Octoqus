@@ -109,12 +109,8 @@
 
 <div align="center">
   <img src="./assets/panel.png" alt="Octoqus Mobile Presentation" width="100%">
-</div>
-
-<div align="center">
-  <img src="./assets/groups.png" alt="Octoqus Mobile Presentation" width="50%">
-  <img src="./assets/groups2.png" alt="Octoqus Mobile Presentation" width="50%">
-
+  <img src="./assets/groups.png" alt="Octoqus Mobile Presentation" width="100%">
+  <img src="./assets/groups2.png" alt="Octoqus Mobile Presentation" width="100%">
 </div>
 
 ---
