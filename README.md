@@ -1,4 +1,4 @@
-# 🎯 Octoqus - Expense Tracking & Social Finance Platform
+# Octoqus - Expense Tracking & Social Finance Platform
 
 <div align="center">
   <img src="./assets/mainpage.png" alt="Octoqus Hero Desktop" width="100%">
@@ -23,7 +23,7 @@
 
 ---
 
-## 📑 Table of Contents
+## Table of Contents
 
 - [Overview](#-overview)
 - [Technical Architecture](#️-technical-architecture)
@@ -41,7 +41,7 @@
 
 ---
 
-## 📋 Overview
+## Overview
 
 **OctoqusLive** is a full-stack web application that enables users to track personal expenses, manage group-based spending, and share financial topics in a social-network-like environment. The platform is built with modern web technologies and features a **production-grade** architecture with enterprise-level security standards.
 
@@ -53,7 +53,7 @@
 
 ---
 
-## 🏗️ Technical Architecture
+## Technical Architecture
 
 ### Tech Stack
 
@@ -102,7 +102,7 @@
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
 ### 1. **Authentication & Security**
 - ✅ JWT-based authentication (HttpOnly Cookies + Bearer Token hybrid)
@@ -113,33 +113,33 @@
 - ✅ Structured logging (JSON format for aggregation)
 
 ### 2. **Expense Management**
-- 📊 Personal expense tracking
-- 👥 Group-based expense management (shared expenses)
-- 💰 Automatic debt/credit calculation
-- 📈 Export features (Excel, PDF)
-- 🏷️ Categorization & filtering
+- Personal expense tracking
+- Group-based expense management (shared expenses)
+- Automatic debt/credit calculation
+- Export features (Excel, PDF)
+- Categorization & filtering
 
 ### 3. **Group System**
-- 👨‍👩‍👧‍👦 Group creation and member management
-- 📝 Membership approval system
-- 🎯 Role-based permissions (User, Leader, Admin)
-- 💬 Group-specific messaging (WebSocket)
+- Group creation and member management
+- Membership approval system
+- Role-based permissions (User, Leader, Admin)
+- Group-specific messaging (WebSocket)
 
 ### 4. **Social Network Features**
-- 🤝 User profiles and public sharing
-- 💭 Social posts & feed
-- 🗣️ Real-time messaging (WebSocket)
-- 📢 Report system (Spam/abuse reporting)
+- User profiles and public sharing
+- Social posts & feed
+- Real-time messaging (WebSocket)
+- Report system (Spam/abuse reporting)
 
 ### 5. **Admin Control Panel**
-- 📊 User & platform statistics
-- 🔍 Audit logging
-- 🚫 User management & moderation
-- ⚙️ System configuration
+- User & platform statistics
+- Audit logging
+- User management & moderation
+- System configuration
 
 ---
 
-## 📸 Application Screenshots
+## Application Screenshots
 
 <div align="center">
   <img src="./assets/panel.png" alt="Octoqus Dashboard Panel" width="100%">
@@ -149,7 +149,7 @@
 
 ---
 
-## 🔧 Installation & Setup
+## Installation & Setup
 
 ### Prerequisites
 - Docker 20.10+
@@ -212,7 +212,7 @@ python -m src.main
 
 ---
 
-## 🔐 Security Features
+## Security Features
 
 ### Backend Security
 
@@ -251,7 +251,7 @@ python -m src.main
 
 ---
 
-## 📊 Database Schema
+## Database Schema
 
 ```
 Tables:
@@ -268,7 +268,7 @@ Tables:
 
 ---
 
-## 📈 Performance & Scalability
+## Performance & Scalability
 
 | Metric | Value | Note |
 |--------|-------|------|
@@ -282,9 +282,9 @@ Tables:
 
 ---
 
-## 🌟 Developer Notes
+## Developer Notes
 
-### 🔄 Infrastructure & Automated Backups
+### Infrastructure & Automated Backups
 **VDS Hosting:** The entire system runs on a dedicated VDS (Virtual Dedicated Server) with resource isolation and performance optimization.
 
 **Rolling Backup:** To maximize data safety, the system is automatically backed up to Google Drive every hour.
@@ -322,7 +322,7 @@ alembic downgrade -1
 
 ---
 
-## 📝 API Endpoint Examples
+## API Endpoint Examples
 
 ### Authentication
 ```bash
@@ -366,7 +366,7 @@ POST  /api/expenses/<expense_id>/export (PDF/Excel)
 
 ---
 
-## 📊 Project Stats
+## Project Stats
 
 | Metric | Value |
 |--------|-------|
@@ -379,13 +379,13 @@ POST  /api/expenses/<expense_id>/export (PDF/Excel)
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the **Non-Commercial** — see the [LICENSE](./LICENSE) file for details.
 
 ---
 
-## 📧 Contact
+## Contact
 
 **Developer:** Yusuf Uyanoğlu (Josephtus)
 **Project URL:** https://github.com/Josephtus/Octoqus
